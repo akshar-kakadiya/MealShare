@@ -1,0 +1,460 @@
+// =============================================================================
+// MealShare Prisma Schema v1.0
+// Database: PostgreSQL with PostGIS & Relational Design
+// =============================================================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -----------------------------------------------------------------------------
+// ENUMS
+// -----------------------------------------------------------------------------
+
+enum UserRole {
+  Donor
+  Receiver_Org
+  Receiver_Vol
+  Admin
+}
+
+enum UserStatus {
+  Pending_Verification
+  Active
+  Restricted
+  Suspended
+}
+
+enum DonorType {
+  Individual
+  Hotel
+  Restaurant
+  Caterer
+  Hostel
+  Event_Organizer
+}
+
+enum OrgType {
+  NGO
+  Shelter
+  Old_Age_Home
+  Community_Kitchen
+  Other
+}
+
+enum VerificationStatus {
+  Unverified
+  Pending
+  Verified
+  Rejected
+}
+
+enum DonationStatus {
+  Draft
+  Posted
+  Requested
+  Approved
+  Pickup_Pending
+  Picked_Up
+  In_Transit
+  Delivered
+  Completed
+  Rejected
+  Cancelled
+  Expired
+  Disputed
+}
+
+enum RequestStatus {
+  Pending
+  Accepted
+  Rejected
+  Withdrawn
+  Voided_Expired
+}
+
+enum StorageCondition {
+  Refrigerated
+  Room_Temperature
+  Frozen
+  Heated_Container
+}
+
+enum InspectionResult {
+  Accepted
+  Rejected
+}
+
+enum TrackingStatus {
+  Active
+  Terminated
+  Interrupted
+}
+
+enum ComplaintCategory {
+  Food_Safety_Spoilage
+  Quantity_Discrepancy
+  Unprofessional_Conduct
+  Unjustified_Cancellation
+  Fraudulent_Documentation
+  Other
+}
+
+enum ComplaintStatus {
+  Open
+  Under_Investigation
+  Resolved
+  Dismissed
+}
+
+// -----------------------------------------------------------------------------
+// CORE AUTH & USER MODELS
+// -----------------------------------------------------------------------------
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  phone        String     @unique
+  passwordHash String     @map("password_hash")
+  role         UserRole
+  status       UserStatus @default(Pending_Verification)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  donorProfile           DonorProfile?
+  receiverOrg            ReceiverOrganization?
+  volunteerProfile       VolunteerProfile?
+  refreshTokens          RefreshToken[]
+  notifications          Notification[]
+  auditLogs              AuditLog[]
+  verificationsReviewed  OrganizationVerification[] @relation("AdminVerifier")
+  reviewsWritten         Review[]                   @relation("Reviewer")
+  reviewsReceived        Review[]                   @relation("ReviewTarget")
+  complaintsFiled        Complaint[]                @relation("Complainant")
+  complaintsTargeted     Complaint[]                @relation("ComplaintTarget")
+  complaintsResolved     Complaint[]                @relation("ComplaintResolver")
+  acceptedDonations      Donation[]                 @relation("AcceptedReceiver")
+  donationRequests       DonationRequest[]
+  pickups                Pickup[]
+  deliveries             Delivery[]
+  trackingSessions       TrackingSession[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// -----------------------------------------------------------------------------
+// PROFILES & VERIFICATION
+// -----------------------------------------------------------------------------
+
+model DonorProfile {
+  id                     String    @id @default(uuid())
+  userId                 String    @unique @map("user_id")
+  type                   DonorType
+  entityName             String    @map("entity_name")
+  addressText            String    @map("address_text")
+  latitude               Float
+  longitude              Float
+  policyAccepted         Boolean   @default(false) @map("policy_accepted")
+  policyAcceptedAt       DateTime? @map("policy_accepted_at")
+  policyVersion          String?   @map("policy_version")
+  ratingAverage          Float     @default(5.0) @map("rating_average")
+  completedDonationsCount Int       @default(0) @map("completed_donations_count")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  donations Donation[]
+
+  @@map("donor_profiles")
+}
+
+model ReceiverOrganization {
+  id                  String             @id @default(uuid())
+  userId              String             @unique @map("user_id")
+  type                OrgType
+  orgName             String             @map("org_name")
+  registrationNumber  String             @map("registration_number")
+  addressText         String             @map("address_text")
+  serviceLatitude     Float              @map("service_latitude")
+  serviceLongitude    Float              @map("service_longitude")
+  serviceRadiusMeters Float              @default(10000.0) @map("service_radius_meters")
+  verificationStatus  VerificationStatus @default(Pending) @map("verification_status")
+  beneficiaryCapacity Int                @default(50) @map("beneficiary_capacity")
+  ratingAverage       Float              @default(5.0) @map("rating_average")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  user          User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verifications OrganizationVerification[]
+
+  @@map("receiver_organizations")
+}
+
+model VolunteerProfile {
+  id                       String   @id @default(uuid())
+  userId                   String   @unique @map("user_id")
+  fullName                 String   @map("full_name")
+  profession               String
+  aboutBio                 String   @map("about_bio")
+  serviceLatitude          Float    @map("service_latitude")
+  serviceLongitude         Float    @map("service_longitude")
+  serviceRadiusMeters      Float    @default(10000.0) @map("service_radius_meters")
+  completedDeliveriesCount Int      @default(0) @map("completed_deliveries_count")
+  totalMealsDelivered      Int      @default(0) @map("total_meals_delivered")
+  ratingAverage            Float    @default(5.0) @map("rating_average")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  certificates Certificate[]
+
+  @@map("volunteer_profiles")
+}
+
+model OrganizationVerification {
+  id           String             @id @default(uuid())
+  orgId        String             @map("org_id")
+  documentType String             @map("document_type")
+  documentUrl  String             @map("document_url")
+  status       VerificationStatus @default(Pending)
+  reviewedById String?            @map("reviewed_by_id")
+  adminNotes   String?            @map("admin_notes")
+  reviewedAt   DateTime?          @map("reviewed_at")
+  createdAt    DateTime           @default(now()) @map("created_at")
+
+  organization ReceiverOrganization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  reviewedBy   User?                @relation("AdminVerifier", fields: [reviewedById], references: [id])
+
+  @@map("organization_verifications")
+}
+
+// -----------------------------------------------------------------------------
+// DONATIONS & FCFS REQUESTS
+// -----------------------------------------------------------------------------
+
+model Donation {
+  id                  String           @id @default(uuid())
+  donorId             String           @map("donor_id")
+  acceptedReceiverId  String?          @map("accepted_receiver_id")
+  status              DonationStatus   @default(Draft)
+  foodType            String           @map("food_type")
+  quantityServings    Int              @map("quantity_servings")
+  prepDateTime        DateTime         @map("prep_date_time")
+  storageCondition    StorageCondition @map("storage_condition")
+  consumptionDeadline DateTime         @map("consumption_deadline")
+  isVegetarian        Boolean          @default(true) @map("is_vegetarian")
+  allergens           Json             @default("[]")
+  pickupAddress       String           @map("pickup_address")
+  pickupLatitude      Float            @map("pickup_latitude")
+  pickupLongitude     Float            @map("pickup_longitude")
+  foodPhotoUrl        String           @map("food_photo_url")
+  notes               String?
+  handoverOtpHash     String?          @map("handover_otp_hash")
+  otpExpiresAt        DateTime?        @map("otp_expires_at")
+  failedOtpAttempts   Int              @default(0) @map("failed_otp_attempts")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  donor            DonorProfile      @relation(fields: [donorId], references: [id], onDelete: Restrict)
+  acceptedReceiver User?             @relation("AcceptedReceiver", fields: [acceptedReceiverId], references: [id])
+  requests         DonationRequest[]
+  pickup           Pickup?
+  delivery         Delivery?
+  trackingSession  TrackingSession?
+  reviews          Review[]
+  complaints       Complaint[]
+
+  @@map("donations")
+}
+
+model DonationRequest {
+  id             String        @id @default(uuid())
+  donationId     String        @map("donation_id")
+  receiverId     String        @map("receiver_id")
+  status         RequestStatus @default(Pending)
+  queueTimestamp DateTime      @default(now()) @map("queue_timestamp")
+  notes          String?
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  donation Donation @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  receiver User     @relation(fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([donationId, receiverId], name: "uq_donation_receiver_request")
+  @@map("donation_requests")
+}
+
+// -----------------------------------------------------------------------------
+// VERIFICATION, TRACKING & DELIVERY
+// -----------------------------------------------------------------------------
+
+model Pickup {
+  id                  String           @id @default(uuid())
+  donationId          String           @unique @map("donation_id")
+  receiverId          String           @map("receiver_id")
+  inspectionResult    InspectionResult @map("inspection_result")
+  rejectionReasonCode String?          @map("rejection_reason_code")
+  verifiedAt          DateTime         @default(now()) @map("verified_at")
+  pickupLatitude      Float            @map("pickup_latitude")
+  pickupLongitude     Float            @map("pickup_longitude")
+  photoEvidenceUrl    String           @map("photo_evidence_url")
+
+  donation Donation @relation(fields: [donationId], references: [id], onDelete: Restrict)
+  receiver User     @relation(fields: [receiverId], references: [id], onDelete: Restrict)
+
+  @@map("pickups")
+}
+
+model TrackingSession {
+  id         String         @id @default(uuid())
+  donationId String         @unique @map("donation_id")
+  receiverId String         @map("receiver_id")
+  status     TrackingStatus @default(Active)
+  startedAt  DateTime       @default(now()) @map("started_at")
+  endedAt    DateTime?      @map("ended_at")
+
+  donation Donation        @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  receiver User            @relation(fields: [receiverId], references: [id], onDelete: Restrict)
+  points   TrackingPoint[]
+
+  @@map("tracking_sessions")
+}
+
+model TrackingPoint {
+  id         BigInt   @id @default(autoincrement())
+  sessionId  String   @map("session_id")
+  latitude   Float
+  longitude  Float
+  heading    Float?
+  speed      Float?
+  recordedAt DateTime @default(now()) @map("recorded_at")
+
+  session TrackingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("tracking_points")
+}
+
+model Delivery {
+  id                    String    @id @default(uuid())
+  donationId            String    @unique @map("donation_id")
+  receiverId            String    @map("receiver_id")
+  confirmedServings     Int       @map("confirmed_servings")
+  discrepancyReasonCode String?   @map("discrepancy_reason_code")
+  completedAt           DateTime  @default(now()) @map("completed_at")
+  destinationLatitude   Float     @map("destination_latitude")
+  destinationLongitude  Float     @map("destination_longitude")
+  photoEvidenceUrl      String    @map("photo_evidence_url")
+
+  donation Donation @relation(fields: [donationId], references: [id], onDelete: Restrict)
+  receiver User     @relation(fields: [receiverId], references: [id], onDelete: Restrict)
+
+  @@map("deliveries")
+}
+
+// -----------------------------------------------------------------------------
+// REVIEWS, COMPLAINTS, CERTIFICATES & AUDIT
+// -----------------------------------------------------------------------------
+
+model Review {
+  id           String   @id @default(uuid())
+  donationId   String   @map("donation_id")
+  reviewerId   String   @map("reviewer_id")
+  targetId     String   @map("target_id")
+  rating       Int
+  feedbackTags Json     @default("[]") @map("feedback_tags")
+  comments     String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  donation Donation @relation(fields: [donationId], references: [id], onDelete: Restrict)
+  reviewer User     @relation("Reviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  target   User     @relation("ReviewTarget", fields: [targetId], references: [id], onDelete: Restrict)
+
+  @@unique([donationId, reviewerId], name: "uq_donation_reviewer")
+  @@map("reviews")
+}
+
+model Complaint {
+  id              String            @id @default(uuid())
+  donationId      String            @map("donation_id")
+  complainantId   String            @map("complainant_id")
+  targetId        String            @map("target_id")
+  category        ComplaintCategory
+  narrative       String
+  evidenceUrls    Json              @default("[]") @map("evidence_urls")
+  status          ComplaintStatus   @default(Open)
+  adminFinding    String?           @map("admin_finding")
+  sanctionApplied String?           @map("sanction_applied")
+  resolvedById    String?           @map("resolved_by_id")
+  resolvedAt      DateTime?         @map("resolved_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  donation    Donation @relation(fields: [donationId], references: [id], onDelete: Restrict)
+  complainant User     @relation("Complainant", fields: [complainantId], references: [id], onDelete: Restrict)
+  target      User     @relation("ComplaintTarget", fields: [targetId], references: [id], onDelete: Restrict)
+  resolvedBy  User?    @relation("ComplaintResolver", fields: [resolvedById], references: [id])
+
+  @@map("complaints")
+}
+
+model Certificate {
+  id                       String   @id @default(uuid())
+  volunteerId              String   @map("volunteer_id")
+  milestoneTier            String   @map("milestone_tier")
+  completedDeliveriesCount Int      @map("completed_deliveries_count")
+  certificatePdfUrl        String   @map("certificate_pdf_url")
+  verificationToken        String   @unique @map("verification_token")
+  issuedAt                 DateTime @default(now()) @map("issued_at")
+
+  volunteer VolunteerProfile @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+
+  @@map("certificates")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  title       String
+  message     String
+  eventType   String   @map("event_type")
+  referenceId String?  @map("reference_id")
+  isRead      Boolean  @default(false) @map("is_read")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id          BigInt   @id @default(autoincrement())
+  actorUserId String?  @map("actor_user_id")
+  actorRole   String   @map("actor_role")
+  actionType  String   @map("action_type")
+  entityName  String   @map("entity_name")
+  entityId    String   @map("entity_id")
+  deltaState  Json?    @map("delta_state")
+  clientIp    String?  @map("client_ip")
+  userAgent   String?  @map("user_agent")
+  timestamp   DateTime @default(now())
+
+  actorUser User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
