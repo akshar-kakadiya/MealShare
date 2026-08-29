@@ -18,6 +18,8 @@ describe('MealShare Auth & RBAC (e2e)', () => {
   const verificationsDb = new Map<string, any>();
   const auditLogsDb: any[] = [];
   const donationsDb = new Map<string, any>();
+  const donationRequestsDb = new Map<string, any>();
+  const notificationsDb: any[] = [];
 
   const mockPrismaService = {
     $connect: jest.fn(),
@@ -160,7 +162,27 @@ describe('MealShare Auth & RBAC (e2e)', () => {
         return Promise.resolve(updated);
       }),
     },
-    $queryRaw: jest.fn(() => {
+        $queryRaw: jest.fn((strings, ...values) => {
+      // Check if it's a SELECT FOR UPDATE on donations
+      const sql = Array.isArray(strings) ? strings.join('?') : String(strings);
+      if (sql.includes('FROM donations') && sql.includes('FOR UPDATE')) {
+        const donId = values[0];
+        const don = donationsDb.get(donId);
+        if (!don) return Promise.resolve([]);
+        let donorUserId: string | null = null;
+        for (const [uid, p] of donorProfilesDb.entries()) {
+          if (p.id === don.donorId) donorUserId = uid;
+        }
+        return Promise.resolve([{
+          id: don.id,
+          donorId: don.donorId,
+          status: don.status,
+          consumptionDeadline: don.consumptionDeadline,
+          donorUserId,
+        }]);
+      }
+
+      // Default to nearby donations spatial mock
       const res: any[] = [];
       for (const don of donationsDb.values()) {
         if (don.status === 'Posted' && new Date(don.consumptionDeadline) > new Date()) {
@@ -186,6 +208,88 @@ describe('MealShare Auth & RBAC (e2e)', () => {
       return Promise.resolve(res);
     }),
 
+    
+    donationRequest: {
+      create: jest.fn(({ data }) => {
+        const id = `req-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const req = {
+          id,
+          ...data,
+          queueTimestamp: data.queueTimestamp || new Date(),
+          createdAt: new Date(),
+        };
+        donationRequestsDb.set(id, req);
+        return Promise.resolve(req);
+      }),
+      findFirst: jest.fn(({ where }) => {
+        for (const req of donationRequestsDb.values()) {
+          if (where.id && req.id !== where.id) continue;
+          if (where.donationId && req.donationId !== where.donationId) continue;
+          if (where.receiverId && req.receiverId !== where.receiverId) continue;
+          if (where.status) {
+            if (typeof where.status === 'string' && req.status !== where.status) continue;
+            if (where.status.in && !where.status.in.includes(req.status)) continue;
+          }
+          return Promise.resolve(req);
+        }
+        return Promise.resolve(null);
+      }),
+      findMany: jest.fn(({ where, orderBy }) => {
+        const res: any[] = [];
+        for (const req of donationRequestsDb.values()) {
+          if (where.donationId && req.donationId !== where.donationId) continue;
+          if (where.receiverId && req.receiverId !== where.receiverId) continue;
+          
+          // Attach receiver relations
+          const receiverUser = usersDb.get(req.receiverId);
+          const receiverOrg = receiverOrgsDb.get(req.receiverId) || null;
+          const volunteerProfile = volunteerProfilesDb.get(req.receiverId) || null;
+          const donation = donationsDb.get(req.donationId);
+          let donor = null;
+          if (donation) {
+            for (const d of donorProfilesDb.values()) {
+              if (d.id === donation.donorId) donor = d;
+            }
+          }
+
+          res.push({
+            ...req,
+            receiver: {
+              ...receiverUser,
+              receiverOrg,
+              volunteerProfile,
+            },
+            donation: donation ? { ...donation, donor } : null,
+          });
+        }
+        res.sort((a, b) => new Date(a.queueTimestamp).getTime() - new Date(b.queueTimestamp).getTime());
+        return Promise.resolve(res);
+      }),
+      update: jest.fn(({ where, data }) => {
+        const req = donationRequestsDb.get(where.id);
+        if (!req) return Promise.resolve(null);
+        const updated = { ...req, ...data };
+        donationRequestsDb.set(where.id, updated);
+        return Promise.resolve(updated);
+      }),
+      count: jest.fn(({ where }) => {
+        let count = 0;
+        for (const req of donationRequestsDb.values()) {
+          if (where.donationId && req.donationId !== where.donationId) continue;
+          if (where.status && req.status !== where.status) continue;
+          if (where.queueTimestamp?.lte && new Date(req.queueTimestamp) > new Date(where.queueTimestamp.lte)) continue;
+          count++;
+        }
+        return Promise.resolve(count);
+      }),
+    },
+    notification: {
+      create: jest.fn(({ data }) => {
+        const notif = { id: `notif-${Date.now()}`, ...data, createdAt: new Date() };
+        notificationsDb.push(notif);
+        return Promise.resolve(notif);
+      }),
+    },
     organizationVerification: {
       create: jest.fn(({ data }) => {
         const verif = { id: `verif-${Date.now()}`, ...data, createdAt: new Date() };
@@ -558,6 +662,161 @@ describe('MealShare Auth & RBAC (e2e)', () => {
         .set('Authorization', `Bearer ${receiverAccessToken}`);
       expect(res.status).toBe(200);
       expect(res.body.data.length).toBe(0); // cancelled, so status is 'Cancelled', not 'Posted'
+    });
+  });
+
+
+  describe('5. FCFS Requests & Donor Approval Phase 3', () => {
+    let activeDonationId: string;
+    let createdRequestId: string;
+
+    beforeAll(async () => {
+      // Create a fresh Posted donation for testing Phase 3
+      const now = new Date();
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/donations')
+        .set('Authorization', `Bearer ${donorAccessToken}`)
+        .send({
+          foodType: 'Hot Biryani & Curry',
+          quantityServings: 40,
+          prepDateTime: new Date(now.getTime() - 60000).toISOString(),
+          storageCondition: StorageCondition.Heated_Container,
+          consumptionDeadline: new Date(now.getTime() + 3 * 3600000).toISOString(),
+          isVegetarian: true,
+          pickupAddress: 'FCFS Test Kitchen, 45 Central Road',
+          pickupLatitude: 12.9716,
+          pickupLongitude: 77.5946,
+          foodPhotoUrl: 'https://storage.mealshare.org/food.jpg',
+        });
+      activeDonationId = res.body.data.donationId;
+    });
+
+    it('POST /api/v1/donations/:id/requests -> receiver submits valid FCFS request', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/donations/${activeDonationId}/requests`)
+        .set('Authorization', `Bearer ${receiverAccessToken}`)
+        .send({
+          notes: 'Can pickup in 20 minutes for local children shelter',
+        })
+        .expect(201);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.donationId).toBe(activeDonationId);
+      expect(res.body.data.queuePosition).toBe(1);
+      expect(res.body.data.status).toBe('Pending');
+      createdRequestId = res.body.data.requestId;
+    });
+
+    it('POST /api/v1/donations/:id/requests -> duplicate request rejected (409 Conflict / ERR-REQ-001)', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/donations/${activeDonationId}/requests`)
+        .set('Authorization', `Bearer ${receiverAccessToken}`)
+        .send({
+          notes: 'Duplicate request attempt',
+        })
+        .expect(409);
+
+      expect(res.body.error.code).toBe('ERR-REQ-001');
+    });
+
+    it('POST /api/v1/donations/:id/requests -> donor cannot submit receiver request (403 Forbidden)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/donations/${activeDonationId}/requests`)
+        .set('Authorization', `Bearer ${donorAccessToken}`)
+        .send({
+          notes: 'Invalid role request',
+        })
+        .expect(403);
+    });
+
+    it('GET /api/v1/donations/:id/requests -> donor reviews FCFS queue with reputation metrics', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/donations/${activeDonationId}/requests`)
+        .set('Authorization', `Bearer ${donorAccessToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.length).toBeGreaterThan(0);
+      expect(res.body.data[0].queuePosition).toBe(1);
+      expect(res.body.data[0].receiver.name).toBe('Hope Children Shelter');
+      expect(res.body.data[0].receiver.verificationStatus).toBe('Verified');
+    });
+
+    it('GET /api/v1/donations/requests/my-requests -> receiver lists submitted requests', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/donations/requests/my-requests')
+        .set('Authorization', `Bearer ${receiverAccessToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.length).toBeGreaterThan(0);
+      expect(res.body.data[0].donationId).toBe(activeDonationId);
+    });
+
+    it('POST /api/v1/donations/:id/requests/:requestId/approve -> donor approves request, generating 6-digit OTP', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/donations/${activeDonationId}/requests/${createdRequestId}/approve`)
+        .set('Authorization', `Bearer ${donorAccessToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('Approved');
+      expect(res.body.data.handoverOtp).toBeDefined();
+      expect(res.body.data.handoverOtp.length).toBe(6);
+    });
+
+    it('POST /api/v1/donations/:id/requests/:requestId/approve -> receiver cannot approve requests (403 Forbidden)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/donations/${activeDonationId}/requests/${createdRequestId}/approve`)
+        .set('Authorization', `Bearer ${receiverAccessToken}`)
+        .expect(403);
+    });
+
+    it('POST /api/v1/donations/:id/requests/:requestId/reject -> donor can reject request', async () => {
+      // Create a second request to test rejection
+      const newReq = {
+        id: `req-reject-${Date.now()}`,
+        donationId: activeDonationId,
+        receiverId: 'temp-receiver-id',
+        status: 'Pending',
+        queueTimestamp: new Date(),
+      };
+      donationRequestsDb.set(newReq.id, newReq);
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/donations/${activeDonationId}/requests/${newReq.id}/reject`)
+        .set('Authorization', `Bearer ${donorAccessToken}`)
+        .send({ rejectionReason: 'Operational constraints' })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('Rejected');
+    });
+
+    it('POST /api/v1/donations/:id/requests/:requestId/withdraw -> receiver can withdraw pending request', async () => {
+      // Find receiver user id from usersDb
+      let recvId = '';
+      for (const u of usersDb.values()) {
+        if (u.email === 'shelter.e2e@mealshare.org') recvId = u.id;
+      }
+
+      // Create a pending request for receiver
+      const withdrawReq = {
+        id: `req-withdraw-${Date.now()}`,
+        donationId: activeDonationId,
+        receiverId: recvId,
+        status: 'Pending',
+        queueTimestamp: new Date(),
+      };
+      donationRequestsDb.set(withdrawReq.id, withdrawReq);
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/donations/${activeDonationId}/requests/${withdrawReq.id}/withdraw`)
+        .set('Authorization', `Bearer ${receiverAccessToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('Withdrawn');
     });
   });
 });

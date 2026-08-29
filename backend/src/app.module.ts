@@ -9,6 +9,7 @@ import { ReceiversModule } from './modules/receivers/receivers.module';
 import { VolunteersModule } from './modules/volunteers/volunteers.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { DonationsModule } from './modules/donations/donations.module';
+import { RequestsModule } from './modules/requests/requests.module';
 import { GlobalHttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -28,6 +29,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     VolunteersModule,
     AdminModule,
     DonationsModule,
+    RequestsModule,
   ],
   providers: [
     {

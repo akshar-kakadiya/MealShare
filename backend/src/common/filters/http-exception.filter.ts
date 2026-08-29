@@ -32,7 +32,7 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
       } else if (typeof res === 'object' && res !== null) {
         const resObj = res as any;
         message = resObj.message || exception.message;
-        errorCode = resObj.error || `ERR-HTTP-${status}`;
+        errorCode = resObj.code || resObj.errorCode || resObj.error || `ERR-HTTP-${status}`;
         details = resObj.details || (Array.isArray(resObj.message) ? resObj.message : undefined);
       }
     } else if (exception instanceof Error) {

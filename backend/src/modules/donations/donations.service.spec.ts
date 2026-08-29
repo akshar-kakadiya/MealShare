@@ -69,8 +69,8 @@ describe('DonationsService', () => {
       });
 
       const res = await service.create('user-id', dto as any);
-      expect(res.success).toBe(true);
-      expect(res.data.status).toBe('Posted');
+      expect(res.status).toBe('Posted');
+      expect(res.donationId).toBe('don-1');
       expect(mockPrismaService.donation.create).toHaveBeenCalled();
     });
 
