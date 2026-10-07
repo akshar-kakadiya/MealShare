@@ -1,0 +1,32 @@
+# ==============================================================================
+# MealShare Managed Cloud Deployment Blueprint (Render Infrastructure as Code)
+# ==============================================================================
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Spring Boot API (Dockerized Web Service)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: mealshare-api
+    runtime: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    plan: standard
+    region: singapore # or oregon / frankfurt
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: PORT
+        value: 8081
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://mealshare-100.web.app,https://mealshare-100.firebaseapp.com,http://localhost:5173
+      - key: FIREBASE_CREDENTIALS_PATH
+        value: /etc/secrets/mealshare-100-firebase-adminsdk.json
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false

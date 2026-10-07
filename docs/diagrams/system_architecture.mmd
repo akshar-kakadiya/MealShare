@@ -1,0 +1,47 @@
+# MealShare System Architecture Diagram
+
+```mermaid
+flowchart TD
+    subgraph Clients["Client Applications"]
+        AdminWeb["Admin Web\n(React 18 + Vite 8 + TypeScript 5.8)\nPort: 5173"]
+        MobileDonor["Flutter Mobile\n(Donor App)"]
+        MobileReceiver["Flutter Mobile\n(Receiver App)"]
+        MobileVolunteer["Flutter Mobile\n(Volunteer App)"]
+    end
+
+    subgraph Auth["Authentication"]
+        FirebaseAuth["Firebase\nAuthentication"]
+    end
+
+    subgraph Backend["Backend Server"]
+        SpringBoot["Spring Boot 3.4.3\n(Java 17)\nREST API — 47 Endpoints\nPort: 8081"]
+        FirebaseSDK["Firebase\nAdmin SDK"]
+    end
+
+    subgraph Data["Data Layer"]
+        PostgreSQL["PostgreSQL 16.8\n+ PostGIS 3.4.3\nPort: 5433"]
+        Flyway["Flyway 10.x\n(V1–V7 Migrations)"]
+    end
+
+    subgraph Future["Future / Proposed"]
+        FCM["Firebase Cloud\nMessaging (FCM)"]
+    end
+
+    AdminWeb -->|"HTTPS REST\n(Bearer Token)"| SpringBoot
+    MobileDonor -->|"HTTPS REST\n(Bearer Token)"| SpringBoot
+    MobileReceiver -->|"HTTPS REST\n(Bearer Token)"| SpringBoot
+    MobileVolunteer -->|"HTTPS REST\n(Bearer Token)"| SpringBoot
+
+    AdminWeb -->|"Sign In"| FirebaseAuth
+    MobileDonor -->|"Sign In"| FirebaseAuth
+    MobileReceiver -->|"Sign In"| FirebaseAuth
+    MobileVolunteer -->|"Sign In"| FirebaseAuth
+
+    SpringBoot -->|"Token\nVerification"| FirebaseSDK
+    SpringBoot -->|"JDBC +\nPostGIS Queries"| PostgreSQL
+    Flyway -.->|"Schema\nMigrations"| PostgreSQL
+    SpringBoot -.->|"Push Notifications\n(NOT TESTED)"| FCM
+
+    style Future fill:#fff3cd,stroke:#ffc107,stroke-dasharray: 5 5
+    style FCM fill:#fff3cd,stroke:#ffc107,stroke-dasharray: 5 5
+```

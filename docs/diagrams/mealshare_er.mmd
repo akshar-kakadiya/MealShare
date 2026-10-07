@@ -1,0 +1,165 @@
+# MealShare Entity-Relationship Diagram
+
+```mermaid
+erDiagram
+    users {
+        UUID id PK
+        VARCHAR firebase_uid UK
+        VARCHAR email UK
+        VARCHAR phone
+        VARCHAR name
+        VARCHAR role
+        VARCHAR status
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    donor_profiles {
+        UUID id PK
+        UUID user_id FK,UK
+        VARCHAR donor_type
+        VARCHAR entity_name
+        TEXT address_text
+        DOUBLE latitude
+        DOUBLE longitude
+        BOOLEAN policy_accepted
+        DOUBLE rating_average
+        INTEGER completed_donations_count
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    receiver_organizations {
+        UUID id PK
+        UUID user_id FK,UK
+        VARCHAR org_type
+        VARCHAR org_name
+        VARCHAR registration_number
+        TEXT address_text
+        DOUBLE service_latitude
+        DOUBLE service_longitude
+        DOUBLE service_radius_meters
+        VARCHAR verification_status
+        INTEGER beneficiary_capacity
+        DOUBLE rating_average
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    volunteer_profiles {
+        UUID id PK
+        UUID user_id FK,UK
+        VARCHAR full_name
+        VARCHAR profession
+        TEXT about_bio
+        DOUBLE service_latitude
+        DOUBLE service_longitude
+        DOUBLE service_radius_meters
+        INTEGER completed_deliveries_count
+        INTEGER total_meals_delivered
+        DOUBLE rating_average
+        VARCHAR availability_status
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    audit_logs {
+        BIGSERIAL id PK
+        VARCHAR actor_user_id
+        VARCHAR actor_role
+        VARCHAR action_type
+        VARCHAR entity_name
+        VARCHAR entity_id
+        JSONB delta_state
+        VARCHAR client_ip
+        TEXT user_agent
+        TIMESTAMPTZ timestamp
+    }
+
+    donations {
+        UUID id PK
+        UUID donor_id FK
+        VARCHAR title
+        TEXT description
+        VARCHAR food_category
+        DOUBLE quantity
+        VARCHAR quantity_unit
+        TIMESTAMPTZ preparation_datetime
+        TIMESTAMPTZ consume_before
+        TIMESTAMPTZ pickup_available_from
+        TIMESTAMPTZ pickup_available_until
+        TEXT pickup_address
+        DOUBLE latitude
+        DOUBLE longitude
+        GEOMETRY location
+        BOOLEAN food_safety_declared
+        TEXT food_safety_declaration_text
+        TIMESTAMPTZ food_safety_declared_at
+        VARCHAR status
+        DOUBLE allocated_quantity
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    donation_requests {
+        UUID id PK
+        UUID donation_id FK
+        UUID receiver_org_id FK
+        DOUBLE requested_quantity
+        TEXT request_reason
+        VARCHAR status
+        TIMESTAMPTZ requested_at
+        TIMESTAMPTZ updated_at
+    }
+
+    pickups {
+        UUID id PK
+        UUID donation_request_id FK,UK
+        UUID volunteer_id FK
+        VARCHAR status
+        TIMESTAMPTZ scheduled_at
+        TIMESTAMPTZ assigned_at
+        VARCHAR otp_hash
+        TIMESTAMPTZ otp_expires_at
+        INTEGER otp_attempts
+        TIMESTAMPTZ otp_verified_at
+        TIMESTAMPTZ picked_up_at
+        TIMESTAMPTZ completed_at
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    notifications {
+        UUID id PK
+        UUID recipient_user_id FK
+        VARCHAR type
+        VARCHAR title
+        TEXT message
+        VARCHAR entity_type
+        UUID entity_id
+        BOOLEAN is_read
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ read_at
+    }
+
+    user_device_tokens {
+        UUID id PK
+        UUID user_id FK
+        TEXT fcm_token
+        VARCHAR platform
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+        TIMESTAMPTZ last_used_at
+    }
+
+    users ||--o| donor_profiles : "has profile"
+    users ||--o| receiver_organizations : "has org"
+    users ||--o| volunteer_profiles : "has profile"
+    users ||--o{ notifications : "receives"
+    users ||--o{ user_device_tokens : "registers"
+    donor_profiles ||--o{ donations : "creates"
+    donations ||--o{ donation_requests : "receives claims"
+    receiver_organizations ||--o{ donation_requests : "submits claims"
+    donation_requests ||--o| pickups : "assigned to"
+    volunteer_profiles ||--o{ pickups : "performs"
+```

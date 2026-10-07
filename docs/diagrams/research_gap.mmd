@@ -1,0 +1,62 @@
+# MealShare Research Gap & Conceptual Evolution Diagram
+
+```mermaid
+flowchart TD
+    subgraph Research["Existing Academic Research Domains (2021–2025)"]
+        R1["Food Loss & Waste Prevention\n(Trevisan & Formentini 2024, Damiani 2021)"]
+        R2["Mobile Redistribution Platforms\n(Pratama 2023, Sudheepa 2023, Karani 2024)"]
+        R3["Spatial Proximity Matching\n(Patel & Pandey 2023, Varghese 2021)"]
+        R4["Logistics & Volunteer Coordination\n(Pai 2023, Chhibber 2021)"]
+        R5["Traceability & Handover Security\n(Villegas-Ch 2025)"]
+        R6["Operations Research & Demand Modeling\n(Reusken 2024, Paul & Davis 2022)"]
+    end
+
+    subgraph Gaps["Identified Integration & Engineering Gaps"]
+        G1["G1: Fragmented Roles\n(No unified Donor-Receiver-Volunteer-Admin system)"]
+        G2["G2: Inefficient Spatial Discovery\n(Client-side math, no database spatial index)"]
+        G3["G3: Handover Vulnerabilities\n(Unverified claims vs. complex blockchain)"]
+        G4["G4: Neglected Food Safety\n(No legal self-declarations or temporal filters)"]
+        G5["G5: OR / ML Disconnect\n(Theoretical models isolated from live apps)"]
+        G6["G6: Lack of Audit Trails\n(No immutable logs or admin verification)"]
+    end
+
+    subgraph Implemented["MealShare Implemented Integrated Platform"]
+        MS1["Multi-Role Architecture\n(Flutter Mobile + React 18 Admin + Spring Boot)"]
+        MS2["Server-Side PostGIS Spatial Engine\n(GiST Indexing, ST_DWithin Proximity Queries)"]
+        MS3["Cryptographic OTP Handover Protocol\n(SecureRandom 6-digit OTP, BCrypt Hashed)"]
+        MS4["Embedded Food Safety Governance\n(Mandatory Declarations, Consume-Before Filters)"]
+        MS5["Transactional Concurrency Allocation\n(Atomic FCFS, Partial Allocations, Check Constraints)"]
+        MS6["Immutable Audit & Notification Pipeline\n(PostgreSQL JSONB Logs, Decoupled Spring Events)"]
+    end
+
+    subgraph Future["Future / Proposed Extensions (NOT IMPLEMENTED)"]
+        F1["ML Demand & Supply Prediction\n(Ensemble forecasting on historical donor volumes)"]
+        F2["Automated Vehicle Route Optimization\n(Google OR-Tools VRPTW multi-stop routing)"]
+        F3["Production Push Delivery\n(Live Apple APNS & Google FCM deployment)"]
+    end
+
+    R1 --> G1
+    R2 --> G1
+    R3 --> G2
+    R4 --> G1
+    R4 --> G3
+    R5 --> G3
+    R5 --> G6
+    R6 --> G5
+
+    G1 --> MS1
+    G2 --> MS2
+    G3 --> MS3
+    G4 --> MS4
+    G5 --> MS5
+    G6 --> MS6
+
+    MS2 -.->|"Geographic coordinates\n& time windows"| F2
+    MS5 -.->|"Historical supply logs\n& donor frequencies"| F1
+    MS6 -.->|"Event payload structures"| F3
+
+    style Future fill:#fff3cd,stroke:#ffc107,stroke-dasharray: 5 5
+    style F1 fill:#fff3cd,stroke:#ffc107,stroke-dasharray: 5 5
+    style F2 fill:#fff3cd,stroke:#ffc107,stroke-dasharray: 5 5
+    style F3 fill:#fff3cd,stroke:#ffc107,stroke-dasharray: 5 5
+```

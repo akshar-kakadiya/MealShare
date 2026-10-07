@@ -1,37 +1,94 @@
-# Node dependencies
+# =============================================================================
+# MealShare .gitignore
+# =============================================================================
+
+# ---- Node.js / JavaScript ----
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*
 
-# Build outputs
+# ---- Build Outputs ----
 dist/
 build/
 coverage/
 .next/
 out/
 
-# Environment files
+# ---- Environment & Secrets ----
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# IDE & OS files
+# ---- IDE & OS ----
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
 *.swp
 *.swo
+*.iml
 
-# Prisma Generated
+# ---- Prisma (Legacy) ----
 prisma/*.db
 prisma/*.db-journal
 
-# Logs
+# ---- Logs ----
 logs/
 *.log
+
+# ---- Java / Maven ----
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+!backend/.mvn/wrapper/*.jar
+!mobile/android/gradle/wrapper/*.jar
+
+# ---- Spring Boot ----
+backend/application-local.yml
+backend/firebase-service-account.json
+
+# ---- Firebase Credentials ----
+**/firebase-service-account.json
+**/google-services.json
+**/GoogleService-Info.plist
+**/firebase_options.dart
+
+# ---- Flutter / Dart ----
+mobile/.dart_tool/
+mobile/.packages
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/app/build/
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/ios/Flutter/Flutter.framework
+mobile/ios/Flutter/Flutter.podspec
+
+# ---- Temporary files ----
+*.tmp
+*.bak
+*.swp
+create_db.js
+/package.json
+/package-lock.json
+
+# Actual Firebase Service Account JSON
+mealshare-*-firebase-adminsdk-*.json
+*-firebase-adminsdk-*.json
+
+# Keystores & Signing
+*.jks
+*.keystore
+key.properties
+TestDB.java
+Akshar/
+.db_password
+.firebase/

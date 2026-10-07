@@ -1,0 +1,15 @@
+package com.mealshare.notification;
+
+public enum NotificationType {
+    REQUEST_CREATED,
+    REQUEST_APPROVED,
+    REQUEST_REJECTED,
+    REQUEST_WITHDRAWN,
+    PICKUP_SCHEDULED,
+    OTP_GENERATED,
+    OTP_VERIFIED,
+    PICKUP_COMPLETED,
+    DONATION_COMPLETED,
+    DONATION_CANCELLED,
+    SYSTEM
+}
