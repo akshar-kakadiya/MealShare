@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../mock/app_state.dart';
+import '../shared/device_hardware_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
 
@@ -293,6 +294,18 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     final prep = now.isBefore(pickupFrom) ? now : pickupFrom.subtract(const Duration(minutes: 15));
     final consumeBefore = pickupUntil.add(const Duration(hours: 4));
 
+    double? lat;
+    double? lon;
+    try {
+      final pos = await DeviceHardwareService.getCurrentLocation();
+      if (pos != null) {
+        lat = pos.latitude;
+        lon = pos.longitude;
+      }
+    } catch (_) {}
+    lat ??= state.currentUser.latitude;
+    lon ??= state.currentUser.longitude;
+
     try {
       await state.createDonationRemote(
         title: _titleCtrl.text.trim(),
@@ -310,6 +323,8 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
         pickupAvailableUntil: pickupUntil,
         consumeBefore: consumeBefore,
         preparationDateTime: prep,
+        latitude: lat,
+        longitude: lon,
       );
 
       if (!mounted) return;

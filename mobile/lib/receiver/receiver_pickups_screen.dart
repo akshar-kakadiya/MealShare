@@ -361,7 +361,9 @@ class _ReceiverPickupsScreenState extends State<ReceiverPickupsScreen> {
                           ApiConfig.receiverInspectFoodUrl(pickupId),
                           body: {
                             'accepted': accepted,
+                            'notes': notes,
                             'inspectionNotes': notes,
+                            if (!accepted) 'rejectionReason': notes,
                           },
                         );
 
@@ -1003,6 +1005,8 @@ class _ReceiverPickupsScreenState extends State<ReceiverPickupsScreen> {
                               final unit = item['quantityUnit']?.toString() ?? 'meals';
                               final status = (item['status'] ?? 'PICKUP_PENDING').toString().toUpperCase();
                               final foodInspected = item['foodInspectedAt'] != null;
+                              final inspectionRejected = item['inspectionRejected'] == true;
+                              final inspectionNotes = item['inspectionNotes']?.toString() ?? '';
                               final tracking = _trackingData[pickupId];
                               final scheduled = item['scheduledAt'] != null
                                   ? DateFormat('MMM d, h:mm a').format(DateTime.parse(item['scheduledAt'].toString()).toLocal())
@@ -1092,9 +1096,13 @@ class _ReceiverPickupsScreenState extends State<ReceiverPickupsScreen> {
                                               const SizedBox(width: 8),
                                               Expanded(
                                                 child: Text(
-                                                  tracking['distanceMeters'] != null
-                                                      ? 'Distance to destination: ${(tracking['distanceMeters'] as num).toInt()} m'
-                                                      : 'Live GPS tracking active',
+                                                  () {
+                                                    final dist = (tracking['distanceToTargetMeters'] ?? tracking['distanceMeters']) as num?;
+                                                    if (dist != null) {
+                                                      return 'Distance to destination: ${dist.toInt()} m';
+                                                    }
+                                                    return 'Live GPS tracking active';
+                                                  }(),
                                                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue),
                                                 ),
                                               ),
@@ -1147,19 +1155,48 @@ class _ReceiverPickupsScreenState extends State<ReceiverPickupsScreen> {
                                           ],
                                         ),
                                       ] else if (status == 'AT_PICKUP') ...[
-                                        if (!foodInspected) ...[
-                                          SizedBox(
-                                            width: double.infinity,
-                                            child: FilledButton.icon(
-                                              icon: const Icon(Icons.health_and_safety, size: 18),
-                                              label: const Text('Inspect Food Quality & Safety'),
-                                              style: FilledButton.styleFrom(
-                                                backgroundColor: Colors.teal,
-                                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                        if (!foodInspected || inspectionRejected) ...[
+                                          if (inspectionRejected) ...[
+                                            Container(
+                                              width: double.infinity,
+                                              margin: const EdgeInsets.only(bottom: 8),
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                color: Colors.red.shade50,
+                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(color: Colors.red.shade200),
                                               ),
-                                              onPressed: () => _showFoodInspectionDialog(pickupId, title),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  const Row(
+                                                    children: [
+                                                      Icon(Icons.cancel, size: 16, color: Colors.red),
+                                                      SizedBox(width: 6),
+                                                      Text('Food Safety Inspection Rejected', style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold)),
+                                                    ],
+                                                  ),
+                                                  if (inspectionNotes.isNotEmpty) ...[
+                                                    const SizedBox(height: 4),
+                                                    Text('Reason: $inspectionNotes', style: TextStyle(fontSize: 12, color: Colors.red.shade900)),
+                                                  ],
+                                                ],
+                                              ),
                                             ),
-                                          ),
+                                          ] else ...[
+                                            SizedBox(
+                                              width: double.infinity,
+                                              child: FilledButton.icon(
+                                                icon: const Icon(Icons.health_and_safety, size: 18),
+                                                label: const Text('Inspect Food Quality & Safety'),
+                                                style: FilledButton.styleFrom(
+                                                  backgroundColor: Colors.teal,
+                                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                                ),
+                                                onPressed: () => _showFoodInspectionDialog(pickupId, title),
+                                              ),
+                                            ),
+                                          ],
                                         ] else ...[
                                           Container(
                                             width: double.infinity,
@@ -1289,6 +1326,32 @@ class _ReceiverPickupsScreenState extends State<ReceiverPickupsScreen> {
                                                 ),
                                               ),
                                           ],
+                                        ),
+                                      ] else if (status == 'CANCELLED') ...[
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: Colors.red.shade50,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: Colors.red.shade200),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              const Row(
+                                                children: [
+                                                  Icon(Icons.cancel, size: 16, color: Colors.red),
+                                                  SizedBox(width: 6),
+                                                  Text('Pickup Cancelled', style: TextStyle(fontSize: 13, color: Colors.red, fontWeight: FontWeight.bold)),
+                                                ],
+                                              ),
+                                              if (inspectionNotes.isNotEmpty) ...[
+                                                const SizedBox(height: 4),
+                                                Text('Reason: $inspectionNotes', style: TextStyle(fontSize: 12, color: Colors.red.shade900)),
+                                              ],
+                                            ],
+                                          ),
                                         ),
                                       ],
                                     ],

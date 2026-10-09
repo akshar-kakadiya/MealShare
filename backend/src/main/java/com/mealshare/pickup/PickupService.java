@@ -494,6 +494,9 @@ public class PickupService {
         if (pickup.getOtpExpiresAt() != null && Instant.now().isAfter(pickup.getOtpExpiresAt())) {
             throw new IllegalStateException("Pickup OTP has expired.");
         }
+        if (pickup.getStatus() != PickupStatus.AT_PICKUP || pickup.getFoodInspectedAt() == null || Boolean.TRUE.equals(pickup.getInspectionRejected())) {
+            throw new IllegalStateException("Handover OTP will be available once the receiver arrives and accepts the food safety inspection.");
+        }
 
         String otp = pickupOtpService.getCachedOtp(pickupId)
                 .orElseThrow(() -> new IllegalStateException("Active OTP is not available or has expired."));
@@ -745,12 +748,24 @@ public class PickupService {
 
         if (Boolean.TRUE.equals(dto.accepted())) {
             pickup.setInspectionRejected(false);
-            pickup.setInspectionNotes(dto.notes() != null ? dto.notes().trim() : "Food inspected and accepted.");
+            pickup.setInspectionNotes(dto.effectiveNotes() != null ? dto.effectiveNotes() : "Food inspected and accepted.");
+
+            if (notificationService != null && donation != null && donation.getDonor() != null && donation.getDonor().getUser() != null) {
+                notificationService.createNotification(
+                        donation.getDonor().getUser().getId(),
+                        NotificationType.PICKUP_ARRIVED,
+                        "Food Inspection Accepted",
+                        receiver.getOrgName() + " inspected and accepted the food for '" + donation.getTitle() + "'. Please share your Handover OTP with the receiver.",
+                        "PICKUP",
+                        pickup.getId()
+                );
+            }
         } else {
             pickup.setInspectionRejected(true);
-            pickup.setInspectionNotes(dto.rejectionReason() != null ? dto.rejectionReason().trim() : "Declined during on-site inspection");
+            pickup.setInspectionNotes(dto.effectiveRejectionReason() != null ? dto.effectiveRejectionReason() : "Declined during on-site inspection");
             pickup.setStatus(PickupStatus.CANCELLED);
             pickup.setTrackingActive(false);
+            pickupOtpService.invalidateOtp(pickupId);
 
             DonationRequest request = pickup.getDonationRequest();
             request.setStatus(DonationRequestStatus.REJECTED);
@@ -796,6 +811,10 @@ public class PickupService {
 
         if (pickup.getStatus() != PickupStatus.AT_PICKUP && pickup.getStatus() != PickupStatus.EN_ROUTE_TO_PICKUP && pickup.getStatus() != PickupStatus.ASSIGNED && pickup.getStatus() != PickupStatus.PICKUP_PENDING) {
             throw new IllegalStateException("Pickup is not in a collectible state. Current status: " + pickup.getStatus());
+        }
+
+        if (pickup.getFoodInspectedAt() == null || Boolean.TRUE.equals(pickup.getInspectionRejected())) {
+            throw new IllegalStateException("Food must be physically inspected and accepted before handover OTP verification.");
         }
 
         if (pickup.getOtpAttempts() >= pickupOtpService.getMaxAttempts()) {

@@ -32,7 +32,10 @@ public record PickupResponse(
         Instant otpVerifiedAt,
         Instant pickedUpAt,
         Instant completedAt,
-        Instant createdAt
+        Instant createdAt,
+        Instant foodInspectedAt,
+        Boolean inspectionRejected,
+        String inspectionNotes
 ) {
     public PickupResponse(
             UUID pickupId,
@@ -80,7 +83,71 @@ public record PickupResponse(
                 otpVerifiedAt,
                 pickedUpAt,
                 completedAt,
-                createdAt
+                createdAt,
+                null,
+                null,
+                null
+        );
+    }
+
+    public PickupResponse(
+            UUID pickupId,
+            UUID donationRequestId,
+            UUID donationId,
+            String donationTitle,
+            String pickupAddress,
+            Double pickupLatitude,
+            Double pickupLongitude,
+            String donorName,
+            String donorPhone,
+            UUID receiverOrganizationId,
+            String receiverOrganizationName,
+            Double requestedQuantity,
+            String quantityUnit,
+            Instant scheduledAt,
+            Instant assignedAt,
+            PickupStatus status,
+            Boolean trackingActive,
+            Double currentLatitude,
+            Double currentLongitude,
+            String pickupPhotoUrl,
+            String deliveryPhotoUrl,
+            Double deliveredQuantity,
+            Instant otpVerifiedAt,
+            Instant pickedUpAt,
+            Instant completedAt,
+            Instant createdAt
+    ) {
+        this(
+                pickupId,
+                donationRequestId,
+                donationId,
+                donationTitle,
+                pickupAddress,
+                pickupLatitude,
+                pickupLongitude,
+                donorName,
+                donorPhone,
+                receiverOrganizationId,
+                receiverOrganizationName,
+                requestedQuantity,
+                quantityUnit,
+                scheduledAt,
+                assignedAt,
+                status,
+                trackingActive,
+                currentLatitude,
+                currentLongitude,
+                pickupPhotoUrl,
+                deliveryPhotoUrl,
+                deliveredQuantity,
+                otpVerifiedAt,
+                pickedUpAt,
+                completedAt,
+                createdAt,
+                null,
+                null,
+                null
         );
     }
 
@@ -116,7 +183,10 @@ public record PickupResponse(
                 pickup.getOtpVerifiedAt(),
                 pickup.getPickedUpAt(),
                 pickup.getCompletedAt(),
-                pickup.getCreatedAt()
+                pickup.getCreatedAt(),
+                pickup.getFoodInspectedAt(),
+                pickup.getInspectionRejected(),
+                pickup.getInspectionNotes()
         );
     }
 }

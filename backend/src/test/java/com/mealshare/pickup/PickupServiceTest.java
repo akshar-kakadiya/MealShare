@@ -669,6 +669,9 @@ class PickupServiceTest {
 
     @Test
     void getOtpForDonor_authorized_returnsOtp() {
+        pickup.setStatus(PickupStatus.AT_PICKUP);
+        pickup.setFoodInspectedAt(Instant.now());
+        pickup.setInspectionRejected(false);
         when(pickupRepository.findById(pickup.getId())).thenReturn(Optional.of(pickup));
         when(pickupOtpService.getCachedOtp(pickup.getId())).thenReturn(Optional.of("860451"));
 
@@ -678,6 +681,107 @@ class PickupServiceTest {
         assertEquals("860451", response.otp());
         assertEquals(donation.getId(), response.donationId());
         assertEquals(pickup.getId(), response.pickupId());
+    }
+
+    @Test
+    void getOtpForDonor_whenFoodNotInspected_throwsIllegalState() {
+        pickup.setStatus(PickupStatus.AT_PICKUP);
+        pickup.setFoodInspectedAt(null);
+        when(pickupRepository.findById(pickup.getId())).thenReturn(Optional.of(pickup));
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                pickupService.getOtpForDonor("donor-uid", pickup.getId(), null)
+        );
+        assertTrue(ex.getMessage().contains("Handover OTP will be available once the receiver arrives and accepts the food safety inspection"));
+    }
+
+    @Test
+    void getOtpForDonor_whenFoodInspectionRejected_throwsIllegalState() {
+        pickup.setStatus(PickupStatus.AT_PICKUP);
+        pickup.setFoodInspectedAt(Instant.now());
+        pickup.setInspectionRejected(true);
+        when(pickupRepository.findById(pickup.getId())).thenReturn(Optional.of(pickup));
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                pickupService.getOtpForDonor("donor-uid", pickup.getId(), null)
+        );
+        assertTrue(ex.getMessage().contains("Handover OTP will be available once the receiver arrives and accepts the food safety inspection"));
+    }
+
+    @Test
+    void getOtpForDonor_whenStatusNotAtPickup_throwsIllegalState() {
+        pickup.setStatus(PickupStatus.EN_ROUTE_TO_PICKUP);
+        pickup.setFoodInspectedAt(Instant.now());
+        pickup.setInspectionRejected(false);
+        when(pickupRepository.findById(pickup.getId())).thenReturn(Optional.of(pickup));
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                pickupService.getOtpForDonor("donor-uid", pickup.getId(), null)
+        );
+        assertTrue(ex.getMessage().contains("Handover OTP will be available once the receiver arrives and accepts the food safety inspection"));
+    }
+
+    @Test
+    void verifyAndPickup_whenFoodNotInspected_throwsIllegalState() {
+        pickup.setStatus(PickupStatus.AT_PICKUP);
+        pickup.setFoodInspectedAt(null);
+        when(pickupRepository.findByIdWithLock(pickup.getId())).thenReturn(Optional.of(pickup));
+
+        var dto = new com.mealshare.pickup.dto.VerifyAndPickupDto("123456", 12.97, 77.59, null);
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                pickupService.verifyAndPickup("receiver-uid", pickup.getId(), dto, null)
+        );
+        assertTrue(ex.getMessage().contains("Food must be physically inspected and accepted"));
+    }
+
+    @Test
+    void verifyAndPickup_whenFoodInspectionRejected_throwsIllegalState() {
+        pickup.setStatus(PickupStatus.AT_PICKUP);
+        pickup.setFoodInspectedAt(Instant.now());
+        pickup.setInspectionRejected(true);
+        when(pickupRepository.findByIdWithLock(pickup.getId())).thenReturn(Optional.of(pickup));
+
+        var dto = new com.mealshare.pickup.dto.VerifyAndPickupDto("123456", 12.97, 77.59, null);
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                pickupService.verifyAndPickup("receiver-uid", pickup.getId(), dto, null)
+        );
+        assertTrue(ex.getMessage().contains("Food must be physically inspected and accepted"));
+    }
+
+    @Test
+    void inspectFood_accepted_updatesPickup() {
+        pickup.setStatus(PickupStatus.AT_PICKUP);
+        when(pickupRepository.findByIdWithLock(pickup.getId())).thenReturn(Optional.of(pickup));
+        when(pickupRepository.save(any(Pickup.class))).thenAnswer(i -> i.getArgument(0));
+
+        var dto = new com.mealshare.pickup.dto.FoodInspectionDto(true, "All food packages sealed and fresh", null, null);
+        var resp = pickupService.inspectFood("receiver-uid", pickup.getId(), dto, null);
+
+        assertNotNull(resp);
+        assertNotNull(pickup.getFoodInspectedAt());
+        assertFalse(pickup.getInspectionRejected());
+        assertEquals("All food packages sealed and fresh", pickup.getInspectionNotes());
+        assertEquals(PickupStatus.AT_PICKUP, pickup.getStatus());
+    }
+
+    @Test
+    void inspectFood_rejected_cancelsPickupAndInvalidatesOtp() {
+        pickup.setStatus(PickupStatus.AT_PICKUP);
+        when(pickupRepository.findByIdWithLock(pickup.getId())).thenReturn(Optional.of(pickup));
+        when(pickupRepository.save(any(Pickup.class))).thenAnswer(i -> i.getArgument(0));
+
+        var dto = new com.mealshare.pickup.dto.FoodInspectionDto(false, "Food spoiled and expired", "Food spoiled and expired", null);
+        var resp = pickupService.inspectFood("receiver-uid", pickup.getId(), dto, null);
+
+        assertNotNull(resp);
+        assertNotNull(pickup.getFoodInspectedAt());
+        assertTrue(pickup.getInspectionRejected());
+        assertEquals("Food spoiled and expired", pickup.getInspectionNotes());
+        assertEquals(PickupStatus.CANCELLED, pickup.getStatus());
+        verify(pickupOtpService).invalidateOtp(pickup.getId());
+        assertEquals(DonationRequestStatus.REJECTED, donationRequest.getStatus());
+        assertEquals(0.0, donation.getAllocatedQuantity());
+        assertEquals(DonationStatus.AVAILABLE, donation.getStatus());
     }
 
     @Test

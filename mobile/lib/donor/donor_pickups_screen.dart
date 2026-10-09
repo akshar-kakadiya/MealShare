@@ -183,8 +183,8 @@ class _DonorPickupsScreenState extends State<DonorPickupsScreen> {
               );
             }
             final data = snapshot.data ?? {};
-            final dist = data['distanceMeters'] as num?;
-            final arrived = data['receiverArrived'] == true;
+            final dist = (data['distanceToTargetMeters'] ?? data['distanceMeters']) as num?;
+            final arrived = data['receiverArrived'] == true || data['status'] == 'AT_PICKUP';
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -361,6 +361,9 @@ class _DonorPickupsScreenState extends State<DonorPickupsScreen> {
     final address = p['pickupAddress']?.toString() ?? 'Address on file';
     final status = (p['status'] ?? 'ASSIGNED').toString().toUpperCase();
     final quantity = p['requestedQuantity'] != null ? '${p['requestedQuantity']} ${p['quantityUnit'] ?? 'meals'}' : '';
+    final foodInspected = p['foodInspectedAt'] != null;
+    final inspectionRejected = p['inspectionRejected'] == true;
+    final inspectionNotes = p['inspectionNotes']?.toString() ?? '';
 
     String scheduledStr = 'Scheduled';
     if (p['scheduledAt'] != null) {
@@ -451,55 +454,177 @@ class _DonorPickupsScreenState extends State<DonorPickupsScreen> {
             const SizedBox(height: 12),
 
             // Action Buttons
-            if (status == 'PICKUP_PENDING' || status == 'ASSIGNED' || status == 'EN_ROUTE_TO_PICKUP' || status == 'AT_PICKUP') ...[
-              if (status == 'EN_ROUTE_TO_PICKUP') ...[
-                Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.navigation, color: Colors.blue, size: 18),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          'Receiver Approaching: Live GPS streaming active.',
-                          style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                      FilledButton.tonal(
-                        onPressed: () => _viewTrackingDialog(pickupId, receiverName),
-                        style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
-                        child: const Text('Track Approach'),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            if (status == 'PICKUP_PENDING' || status == 'ASSIGNED') ...[
               Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.schedule, color: AppColors.textSecondary, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Awaiting receiver departure. Handover OTP will unlock once receiver arrives and completes food inspection.',
+                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else if (status == 'EN_ROUTE_TO_PICKUP') ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.navigation, color: Colors.blue, size: 18),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Receiver Approaching: Live GPS streaming active.',
+                        style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: () => _viewTrackingDialog(pickupId, receiverName),
+                      style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+                      child: const Text('Track Approach'),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: AppColors.primarySurface,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Row(
+                child: const Row(
                   children: [
-                    const Icon(Icons.shield_outlined, color: AppColors.primary, size: 20),
-                    const SizedBox(width: 8),
-                    const Expanded(
+                    Icon(Icons.shield_outlined, color: AppColors.primary, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
                       child: Text(
-                        'Secure Handover: Keep your OTP confidential until food is handed over.',
+                        'Handover OTP will unlock once the receiver arrives and accepts food safety inspection.',
                         style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w500),
                       ),
                     ),
-                    FilledButton.tonal(
-                      onPressed: () => _viewOtpDialog(pickupId, receiverName),
-                      child: const Text('View OTP'),
+                  ],
+                ),
+              ),
+            ] else if (status == 'AT_PICKUP') ...[
+              if (!foodInspected || inspectionRejected) ...[
+                if (inspectionRejected) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.shade200),
                     ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.cancel, color: Colors.red, size: 18),
+                            SizedBox(width: 8),
+                            Text('Inspection Rejected by Receiver', style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        if (inspectionNotes.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text('Reason: $inspectionNotes', style: const TextStyle(fontSize: 12, color: Colors.red)),
+                        ],
+                      ],
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.shade300),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.hourglass_top, color: Colors.amber, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Receiver has arrived. Food safety inspection in progress. Handover OTP will unlock once accepted.',
+                            style: TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_outline, color: Colors.green, size: 20),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Food inspected & accepted! Share your 6-digit OTP with the receiver to complete custody handover.',
+                          style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                        onPressed: () => _viewOtpDialog(pickupId, receiverName),
+                        child: const Text('View OTP'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ] else if (status == 'CANCELLED') ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.cancel, color: Colors.red, size: 18),
+                        SizedBox(width: 8),
+                        Text('Pickup Cancelled', style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    if (inspectionNotes.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text('Reason: $inspectionNotes', style: const TextStyle(fontSize: 12, color: Colors.red)),
+                    ],
                   ],
                 ),
               ),

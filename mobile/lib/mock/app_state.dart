@@ -813,14 +813,21 @@ class AppState extends ChangeNotifier {
     required DateTime pickupAvailableUntil,
     required DateTime consumeBefore,
     DateTime? preparationDateTime,
-    double latitude = 12.9716,
-    double longitude = 77.5946,
+    double? latitude,
+    double? longitude,
   }) async {
     final now = DateTime.now();
     final effectivePrep = preparationDateTime ??
         (pickupAvailableFrom.isAfter(now)
             ? now
             : pickupAvailableFrom.subtract(const Duration(minutes: 30)));
+
+    final effectiveLat = (latitude != null && latitude != 0.0)
+        ? latitude
+        : (currentUser.latitude != 0.0 ? currentUser.latitude : 12.9716);
+    final effectiveLon = (longitude != null && longitude != 0.0)
+        ? longitude
+        : (currentUser.longitude != 0.0 ? currentUser.longitude : 77.5946);
 
     final payload = {
       'title': title,
@@ -839,8 +846,8 @@ class AppState extends ChangeNotifier {
       'pickupAvailableFrom': pickupAvailableFrom.toUtc().toIso8601String(),
       'pickupAvailableUntil': pickupAvailableUntil.toUtc().toIso8601String(),
       'consumeBefore': consumeBefore.toUtc().toIso8601String(),
-      'latitude': latitude,
-      'longitude': longitude,
+      'latitude': effectiveLat,
+      'longitude': effectiveLon,
     };
 
     if (apiClient != null) {
