@@ -8,8 +8,9 @@ services:
   - type: web
     name: mealshare-api
     runtime: docker
-    dockerContext: ./backend
-    dockerfilePath: ./backend/Dockerfile
+    rootDir: ./backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: standard
     region: singapore # or oregon / frankfurt
     healthCheckPath: /api/v1/health

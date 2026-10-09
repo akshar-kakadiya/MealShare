@@ -1,0 +1,37 @@
+# ==============================================================================
+# MealShare Root Dockerignore
+# Exclude non-backend services, secrets, and repository noise
+# ==============================================================================
+
+# Version control
+.git/
+.gitignore
+
+# Frontend & Mobile services (not part of backend container)
+mobile/
+admin-web/
+docs/
+scripts/
+
+# Root build and package files
+node_modules/
+dist/
+build/
+
+# Secrets and local credentials
+.env*
+*-firebase-adminsdk-*.json
+firebase-service-account.json
+.db_password
+backend/application-local.yml
+
+# Backend build outputs
+backend/target/
+
+# IDE, OS, and log files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+*.log

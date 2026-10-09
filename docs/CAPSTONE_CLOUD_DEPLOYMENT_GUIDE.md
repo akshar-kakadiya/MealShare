@@ -94,10 +94,18 @@ All 11 versioned migrations have been executed against the live managed Supabase
 ### 4.1 Deployment Configuration Files
 The repository includes all necessary production configuration:
 - `backend/Dockerfile`: Multi-stage Docker build producing a lightweight Eclipse Temurin 17 JRE container.
-- `render.yaml`: Blueprint definition specifying Docker build context (`./backend`) and health check path (`/api/v1/health`).
+- `render.yaml`: Blueprint definition specifying `rootDir: ./backend`, `dockerfilePath: ./Dockerfile`, and `dockerContext: .`.
+- `backend/.dockerignore`: Strict build ignore rules protecting secrets while including Maven wrapper and source.
+- `.dockerignore`: Root-level Docker ignore rules.
 - `backend/src/main/resources/application-prod.yml`: Production Spring Boot profile.
 
-### 4.2 Required Render Environment Variables
+### 4.2 Render Service Settings (Dashboard UI)
+If configuring the service via the Render Dashboard (rather than Blueprint Sync):
+- **Root Directory:** `backend` *(CRITICAL: Must be `backend`, not empty. This sets the Docker build context to the backend project folder).*
+- **Dockerfile Path:** `Dockerfile` *(Relative to the Root Directory `backend`).*
+- **Docker Context:** Defaults to `backend` automatically when Root Directory is `backend`.
+
+### 4.3 Required Render Environment Variables
 Configure the following environment variables in the Render Dashboard under **Environment**:
 
 | Key | Value / Format | Note |

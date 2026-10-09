@@ -1,6 +1,32 @@
+# ==============================================================================
+# MealShare Backend Dockerignore
+# Exclude build output, local secrets, and IDE files from Docker build context
+# ==============================================================================
+
+# Build artifacts
 target/
-*.log
-.git
-.idea
+*.class
+
+# Environment & Secrets (Never bake into Docker image)
+*-firebase-adminsdk-*.json
+firebase-service-account.json
+application-local.yml
+.env*
+.db_password
+
+# IDE & Editor files
+.idea/
+.vscode/
 *.iml
+*.ipr
+*.iws
+
+# System & OS files
 .DS_Store
+Thumbs.db
+
+# Logs & temp files
+logs/
+*.log
+*.tmp
+*.bak
