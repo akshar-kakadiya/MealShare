@@ -6,6 +6,9 @@ server:
 spring:
   application:
     name: mealshare-backend
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/mealshare_app}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}

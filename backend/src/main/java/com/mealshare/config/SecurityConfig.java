@@ -64,4 +64,12 @@ public class SecurityConfig {
     public org.springframework.security.crypto.password.PasswordEncoder passwordEncoder() {
         return new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
     }
+
+    @Bean
+    public org.springframework.security.core.userdetails.UserDetailsService userDetailsService() {
+        return username -> {
+            throw new org.springframework.security.core.userdetails.UsernameNotFoundException(
+                    "Username/password authentication is disabled. Authenticate with Firebase Bearer tokens.");
+        };
+    }
 }

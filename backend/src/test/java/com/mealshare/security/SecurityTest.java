@@ -27,7 +27,9 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(controllers = UserController.class)
+import com.mealshare.common.controller.HealthController;
+
+@WebMvcTest(controllers = {UserController.class, HealthController.class})
 @Import({SecurityConfig.class, FirebaseAuthenticationFilter.class, CustomAuthenticationEntryPoint.class, CorsConfig.class})
 @ActiveProfiles("test")
 class SecurityTest {
@@ -43,6 +45,17 @@ class SecurityTest {
 
     @MockBean
     private com.mealshare.user.UserRepository userRepository;
+
+    @Autowired
+    private org.springframework.security.core.userdetails.UserDetailsService userDetailsService;
+
+    @Test
+    void disabledUserDetailsServiceShouldThrowUsernameNotFoundException() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                org.springframework.security.core.userdetails.UsernameNotFoundException.class,
+                () -> userDetailsService.loadUserByUsername("admin")
+        );
+    }
 
     private FirebaseToken mockToken;
     private User mockUser;
@@ -74,6 +87,23 @@ class SecurityTest {
         mockMvc.perform(get("/api/v1/users/me")
                 .header("Authorization", "Bearer invalid-token"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void uninitializedFirebaseShouldReturn401FailSafe() throws Exception {
+        when(firebaseTokenValidator.verifyIdToken("any-token"))
+                .thenThrow(new IllegalStateException("Firebase Admin SDK is not initialized. Token verification is unavailable."));
+
+        mockMvc.perform(get("/api/v1/users/me")
+                .header("Authorization", "Bearer any-token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void publicHealthEndpointShouldSucceedEvenIfUnauthenticated() throws Exception {
+        mockMvc.perform(get("/api/v1/health"))
+                .andExpect(status().isOk());
     }
 
     @Test

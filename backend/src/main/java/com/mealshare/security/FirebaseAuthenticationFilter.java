@@ -88,6 +88,9 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
         } catch (FirebaseAuthException e) {
             log.warn("Firebase token verification failed: {}", e.getMessage());
             SecurityContextHolder.clearContext();
+        } catch (IllegalStateException e) {
+            log.warn("Firebase token verification unavailable: {}", e.getMessage());
+            SecurityContextHolder.clearContext();
         } catch (Exception e) {
             log.error("Unexpected error during Firebase authentication: {}", e.getMessage());
             SecurityContextHolder.clearContext();

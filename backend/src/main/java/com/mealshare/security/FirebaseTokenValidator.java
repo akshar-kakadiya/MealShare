@@ -11,7 +11,7 @@ public class FirebaseTokenValidator {
 
     public FirebaseToken verifyIdToken(String idToken) throws FirebaseAuthException {
         if (FirebaseApp.getApps().isEmpty()) {
-            throw new RuntimeException("Firebase not initialized. Cannot verify token.");
+            throw new IllegalStateException("Firebase Admin SDK is not initialized. Token verification is unavailable.");
         }
         return FirebaseAuth.getInstance().verifyIdToken(idToken);
     }
