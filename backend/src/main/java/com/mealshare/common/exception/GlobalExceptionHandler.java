@@ -43,6 +43,19 @@ public class GlobalExceptionHandler {
                 .body(ApiErrorResponse.of(400, "VALIDATION_ERROR", message, request.getRequestURI()));
     }
 
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponse> handleHttpMessageNotReadableException(
+            org.springframework.http.converter.HttpMessageNotReadableException ex, HttpServletRequest request) {
+        String message = "Malformed JSON request or invalid field format";
+        if (ex.getCause() instanceof com.fasterxml.jackson.databind.exc.InvalidFormatException ife) {
+            String targetType = ife.getTargetType() != null ? ife.getTargetType().getSimpleName() : "field";
+            message = String.format("Invalid value '%s' for %s", ife.getValue(), targetType);
+        }
+        log.warn("Bad request on {}: {}", request.getRequestURI(), message);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiErrorResponse.of(400, "BAD_REQUEST", message, request.getRequestURI()));
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleResourceNotFoundException(
             ResourceNotFoundException ex, HttpServletRequest request) {

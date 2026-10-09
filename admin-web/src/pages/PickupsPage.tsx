@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Truck, MapPin, Clock, Shield, Plus, X, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
 import DataTable from '../components/DataTable';
 import type { Column } from '../components/DataTable';
@@ -15,12 +16,38 @@ export interface Pickup {
   pickupAddress: string;
   deliveryAddress: string;
   scheduledTime: string;
-  otpCode: string;
   status: string;
   createdAt: string;
+  pickupPhotoUrl?: string;
+  deliveryPhotoUrl?: string;
+  deliveredQuantity?: number;
+  quantityDiscrepancyReason?: string;
+  trackingActive?: boolean;
 }
 
-const STATUS_TABS = ['All', 'ASSIGNED', 'PICKED_UP', 'COMPLETED', 'CANCELLED'];
+const STATUS_TABS = ['All', 'PICKUP_PENDING', 'EN_ROUTE_TO_PICKUP', 'AT_PICKUP', 'PICKED_UP', 'IN_TRANSIT', 'COMPLETED', 'CANCELLED'];
+
+function toLocalDatetimeInput(date: Date): string {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const y = date.getFullYear();
+  const m = pad(date.getMonth() + 1);
+  const d = pad(date.getDate());
+  const hh = pad(date.getHours());
+  const mm = pad(date.getMinutes());
+  return `${y}-${m}-${d}T${hh}:${mm}`;
+}
+
+export interface ApprovedRequestItem {
+  id: string;
+  donationId?: string;
+  donationTitle: string;
+  donorName: string;
+  receiverOrgName: string;
+  quantity: number;
+  unit: string;
+  requestReason?: string;
+  requestedAt?: string;
+}
 
 export default function PickupsPage() {
   const [data, setData] = useState<Pickup[]>([]);
@@ -32,17 +59,56 @@ export default function PickupsPage() {
   const [activeTab, setActiveTab] = useState('All');
   const [selectedPickup, setSelectedPickup] = useState<Pickup | null>(null);
   const [loading, setLoading] = useState(false);
+  const [searchParams] = useSearchParams();
   const [apiError, setApiError] = useState<string | null>(null);
 
   // Schedule Pickup Modal State
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [approvedRequests, setApprovedRequests] = useState<ApprovedRequestItem[]>([]);
   const [assignForm, setAssignForm] = useState({
     donationRequestId: '',
-    scheduledAt: new Date(Date.now() + 3600000 * 2).toISOString().slice(0, 16),
+    scheduledAt: toLocalDatetimeInput(new Date(Date.now() + 15 * 60 * 1000)),
   });
   const [assignLoading, setAssignLoading] = useState(false);
   const [assignSuccess, setAssignSuccess] = useState<string | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const reqId = searchParams.get('requestId');
+    if (reqId) {
+      setAssignForm((prev) => ({
+        ...prev,
+        donationRequestId: reqId,
+        scheduledAt: toLocalDatetimeInput(new Date(Date.now() + 15 * 60 * 1000)),
+      }));
+      setShowAssignModal(true);
+    }
+  }, [searchParams]);
+
+  const loadApprovedRequests = useCallback(async () => {
+    try {
+      const res = await apiClient.get('/admin/requests', { params: { status: 'APPROVED', size: 50 } });
+      if (res.data && Array.isArray(res.data.content)) {
+        setApprovedRequests(res.data.content.map((r: any) => ({
+          id: r.id,
+          donationId: r.donationId,
+          donationTitle: r.donationTitle || 'Donation Claim',
+          donorName: r.donorName || 'Donor Org',
+          receiverOrgName: r.receiverOrgName || r.receiverOrganization || r.receiverName || 'Receiver Org',
+          quantity: r.allocatedQuantity ?? r.requestedQuantity ?? r.quantity ?? 0,
+          unit: r.unit || r.quantityUnit || 'meals',
+          requestReason: r.requestReason,
+          requestedAt: r.requestedAt,
+        })));
+      }
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    if (showAssignModal) {
+      loadApprovedRequests();
+    }
+  }, [showAssignModal, loadApprovedRequests]);
 
   const fetchPickups = useCallback(async () => {
     setLoading(true);
@@ -69,6 +135,11 @@ export default function PickupsPage() {
           otpCode: '••••••', // Strictly masked for operational security
           status: p.status || 'ASSIGNED',
           createdAt: p.createdAt || p.assignedAt || new Date().toISOString(),
+          pickupPhotoUrl: p.pickupPhotoUrl,
+          deliveryPhotoUrl: p.deliveryPhotoUrl,
+          deliveredQuantity: p.deliveredQuantity,
+          quantityDiscrepancyReason: p.quantityDiscrepancyReason,
+          trackingActive: p.trackingActive,
         }));
         setData(mapped);
         setTotalElements(res.data.totalElements || mapped.length);
@@ -109,7 +180,9 @@ export default function PickupsPage() {
       setAssignSuccess(
         `Pickup scheduled successfully! Pickup ID: ${res.data?.pickupId}. Handover OTP securely routed to donor.`
       );
+      setAssignForm((prev) => ({ ...prev, donationRequestId: '' }));
       fetchPickups();
+      loadApprovedRequests();
     } catch (err: any) {
       setAssignError(err.response?.data?.message || err.message || 'Failed to schedule pickup');
     } finally {
@@ -167,7 +240,7 @@ export default function PickupsPage() {
     { key: 'status', label: 'Status', render: (val: string) => <StatusBadge status={val} /> },
   ];
 
-  const LIFECYCLE = ['ASSIGNED', 'PICKED_UP', 'COMPLETED'];
+  const LIFECYCLE = ['PICKUP_PENDING', 'EN_ROUTE_TO_PICKUP', 'AT_PICKUP', 'PICKED_UP', 'IN_TRANSIT', 'COMPLETED'];
 
   return (
     <div className="space-y-4">
@@ -278,16 +351,56 @@ export default function PickupsPage() {
             <form onSubmit={handleAssignSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Donation Request ID (Approved Request UUID)
+                  Approved Donation Request
                 </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
-                  value={assignForm.donationRequestId}
-                  onChange={(e) => setAssignForm({ ...assignForm, donationRequestId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono"
-                />
+                {approvedRequests.length > 0 ? (
+                  <select
+                    value={assignForm.donationRequestId}
+                    onChange={(e) => setAssignForm({ ...assignForm, donationRequestId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mb-2"
+                  >
+                    <option value="">-- Select from approved claims ({approvedRequests.length}) --</option>
+                    {approvedRequests.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.donationTitle} → {r.receiverOrgName} ({r.quantity} {r.unit})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-xs text-amber-700 bg-amber-50 p-2 rounded mb-2">
+                    No approved requests found. Once a donor approves a claim, it will appear here.
+                  </p>
+                )}
+
+                {(() => {
+                  const selectedClaim = approvedRequests.find((r) => r.id === assignForm.donationRequestId);
+                  if (selectedClaim) {
+                    return (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs space-y-1">
+                        <p className="font-semibold text-emerald-900">
+                          {selectedClaim.donationTitle} • {selectedClaim.quantity} {selectedClaim.unit}
+                        </p>
+                        <p className="text-emerald-700">
+                          Donor: <span className="font-medium">{selectedClaim.donorName}</span> | Receiver: <span className="font-medium">{selectedClaim.receiverOrgName}</span>
+                        </p>
+                        {selectedClaim.requestReason && (
+                          <p className="text-emerald-600 italic">Purpose: "{selectedClaim.requestReason}"</p>
+                        )}
+                        <p className="text-[10px] text-gray-500 font-mono pt-1">Request ID: {selectedClaim.id}</p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <input
+                      type="text"
+                      required
+                      placeholder="Request UUID: e.g. 550e8400-e29b-41d4-a716-446655440000"
+                      value={assignForm.donationRequestId}
+                      onChange={(e) => setAssignForm({ ...assignForm, donationRequestId: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-gray-700"
+                    />
+                  );
+                })()}
               </div>
 
               <div>
@@ -299,6 +412,29 @@ export default function PickupsPage() {
                   onChange={(e) => setAssignForm({ ...assignForm, scheduledAt: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
+                <div className="flex gap-2 mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setAssignForm({ ...assignForm, scheduledAt: toLocalDatetimeInput(new Date(Date.now() + 15 * 60 * 1000)) })}
+                    className="px-2 py-1 text-[11px] bg-gray-100 hover:bg-gray-200 text-gray-700 rounded font-medium transition"
+                  >
+                    Soon (+15m)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssignForm({ ...assignForm, scheduledAt: toLocalDatetimeInput(new Date(Date.now() + 60 * 60 * 1000)) })}
+                    className="px-2 py-1 text-[11px] bg-gray-100 hover:bg-gray-200 text-gray-700 rounded font-medium transition"
+                  >
+                    In 1 Hour
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssignForm({ ...assignForm, scheduledAt: toLocalDatetimeInput(new Date(Date.now() + 2 * 60 * 60 * 1000)) })}
+                    className="px-2 py-1 text-[11px] bg-gray-100 hover:bg-gray-200 text-gray-700 rounded font-medium transition"
+                  >
+                    In 2 Hours
+                  </button>
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
@@ -415,6 +551,61 @@ export default function PickupsPage() {
                   })}
                 </div>
               </div>
+
+              {/* Photo Evidence & Delivery Details */}
+              {(selectedPickup.pickupPhotoUrl || selectedPickup.deliveryPhotoUrl || selectedPickup.deliveredQuantity != null) && (
+                <div className="space-y-3 pt-2 border-t border-gray-100">
+                  <h4 className="text-sm font-semibold text-gray-700">Audit & Evidence</h4>
+                  {selectedPickup.deliveredQuantity != null && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs">
+                      <p className="font-semibold text-emerald-900">
+                        Delivered Quantity: {selectedPickup.deliveredQuantity}
+                      </p>
+                      {selectedPickup.quantityDiscrepancyReason && (
+                        <p className="text-emerald-700 mt-1">
+                          Discrepancy: {selectedPickup.quantityDiscrepancyReason}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    {selectedPickup.pickupPhotoUrl && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Pickup Photo Evidence</p>
+                        <a
+                          href={selectedPickup.pickupPhotoUrl.startsWith('http') ? selectedPickup.pickupPhotoUrl : `http://localhost:8081${selectedPickup.pickupPhotoUrl}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block rounded-lg overflow-hidden border border-gray-200 hover:opacity-90"
+                        >
+                          <img
+                            src={selectedPickup.pickupPhotoUrl.startsWith('http') ? selectedPickup.pickupPhotoUrl : `http://localhost:8081${selectedPickup.pickupPhotoUrl}`}
+                            alt="Pickup evidence"
+                            className="w-full h-24 object-cover"
+                          />
+                        </a>
+                      </div>
+                    )}
+                    {selectedPickup.deliveryPhotoUrl && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Delivery Photo Evidence</p>
+                        <a
+                          href={selectedPickup.deliveryPhotoUrl.startsWith('http') ? selectedPickup.deliveryPhotoUrl : `http://localhost:8081${selectedPickup.deliveryPhotoUrl}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block rounded-lg overflow-hidden border border-gray-200 hover:opacity-90"
+                        >
+                          <img
+                            src={selectedPickup.deliveryPhotoUrl.startsWith('http') ? selectedPickup.deliveryPhotoUrl : `http://localhost:8081${selectedPickup.deliveryPhotoUrl}`}
+                            alt="Delivery evidence"
+                            className="w-full h-24 object-cover"
+                          />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

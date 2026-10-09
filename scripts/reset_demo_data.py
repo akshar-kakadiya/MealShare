@@ -78,12 +78,6 @@ def sync_firebase():
                 "uid": "pwvnvHgatoahwb9ndKfSM2TVFPG2",
                 "password": "ReceiverPassword123!",
                 "name": "Hope Community Shelter Foundation"
-            },
-            {
-                "email": "volunteer@mealshare.org",
-                "uid": "mXSXYZ1nJTf4HfNTDNxRcfrDYVO2",
-                "password": "VolunteerPassword123!",
-                "name": "Alex Kumar"
             }
         ]
 
@@ -111,6 +105,7 @@ def sync_firebase():
 def main():
     print("=" * 60)
     print(" MealShare Capstone Demo Reset & Data Provisioning")
+    print(" Strict 3-Role Model: DONOR, RECEIVER, ADMIN (Zero Volunteers)")
     print("=" * 60)
 
     db_ok = reset_postgres()
@@ -123,7 +118,6 @@ def main():
         print("  - Admin Web     : admin@mealshare.org     (AdminPassword123!)")
         print("  - Donor App     : donor@mealshare.org     (DonorPassword123!)")
         print("  - Receiver App  : receiver@mealshare.org  (ReceiverPassword123!)")
-        print("  - Volunteer App : volunteer@mealshare.org (VolunteerPassword123!)")
         print("=" * 60)
     else:
         print(" RESET FAILED. Please verify Docker container is running.")

@@ -26,7 +26,12 @@ public class UserController {
     @Operation(summary = "Get current user profile", description = "Returns the authenticated user's profile based on their Firebase UID")
     public ResponseEntity<UserResponse> getCurrentUser(@AuthenticationPrincipal FirebasePrincipal principal) {
         return userService.findByFirebaseUid(principal.uid())
-                .map(ResponseEntity::ok)
+                .map(user -> {
+                    if (user.status() == UserStatus.SUSPENDED) {
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN).<UserResponse>build();
+                    }
+                    return ResponseEntity.ok(user);
+                })
                 .orElse(ResponseEntity.notFound().build());
     }
 

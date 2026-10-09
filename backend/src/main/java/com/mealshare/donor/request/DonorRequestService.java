@@ -55,9 +55,16 @@ public class DonorRequestService {
         this.auditService = auditService;
     }
 
+    @Autowired(required = false)
+    private com.mealshare.pickup.PickupService pickupService;
+
     @Autowired
     public void setEventPublisher(ApplicationEventPublisher eventPublisher) {
         this.eventPublisher = eventPublisher;
+    }
+
+    public void setPickupService(com.mealshare.pickup.PickupService pickupService) {
+        this.pickupService = pickupService;
     }
 
     public Page<DonorDonationRequestResponse> getRequestsForDonation(String firebaseUid,
@@ -173,6 +180,15 @@ public class DonorRequestService {
 
         donationRepository.save(donation);
         donationRequestRepository.save(request);
+
+        // Auto-initialize Pickup in PICKUP_PENDING status so receiver can directly initiate pickup journey
+        if (pickupService != null) {
+            try {
+                pickupService.createPickupForApprovedRequest(donation, request, httpRequest);
+            } catch (Exception e) {
+                // Log and continue to preserve transaction integrity
+            }
+        }
 
         if (eventPublisher != null && request.getReceiverOrganization() != null
                 && request.getReceiverOrganization().getUser() != null) {

@@ -151,7 +151,7 @@ public class DonationService {
             throw new AccessDeniedException("You do not have permission to modify this donation.");
         }
 
-        if (donation.getStatus() != DonationStatus.AVAILABLE) {
+        if (donation.getStatus() != DonationStatus.AVAILABLE && donation.getStatus() != DonationStatus.APPROVED) {
             throw new IllegalStateException("Cannot update donation in status: " + donation.getStatus());
         }
 

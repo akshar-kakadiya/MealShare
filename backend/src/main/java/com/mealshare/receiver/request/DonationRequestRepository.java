@@ -15,6 +15,8 @@ public interface DonationRequestRepository extends JpaRepository<DonationRequest
 
     Page<DonationRequest> findByReceiverOrganizationIdOrderByRequestedAtDesc(UUID receiverOrgId, Pageable pageable);
 
+    List<DonationRequest> findByReceiverOrganizationIdAndStatus(UUID receiverOrgId, DonationRequestStatus status);
+
     Optional<DonationRequest> findByIdAndReceiverOrganizationId(UUID id, UUID receiverOrgId);
 
     List<DonationRequest> findByDonationIdOrderByRequestedAtAscIdAsc(UUID donationId);

@@ -32,7 +32,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   TimeOfDay _pickupUntil = const TimeOfDay(hour: 20, minute: 0);
 
   final _units = ['meals', 'kg', 'portions', 'boxes'];
-  final _categories = ['Meals', 'Bakery', 'Fruits', 'Vegetables', 'Dairy', 'Beverages', 'Other'];
+  final _categories = ['Meals', 'Packaged Food', 'Bakery', 'Fruits', 'Vegetables', 'Grains', 'Dairy', 'Other'];
   final _storageConditions = ['Room Temperature', 'Refrigerated', 'Frozen'];
   final _packagingConditions = ['Sealed', 'Partially Sealed', 'Open'];
 
@@ -282,8 +282,15 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
 
     final state = context.read<AppState>();
     final now = DateTime.now();
-    final pickupFrom = DateTime(now.year, now.month, now.day, _pickupFrom.hour, _pickupFrom.minute);
-    final pickupUntil = DateTime(now.year, now.month, now.day, _pickupUntil.hour, _pickupUntil.minute);
+    var pickupFrom = DateTime(now.year, now.month, now.day, _pickupFrom.hour, _pickupFrom.minute);
+    if (pickupFrom.isBefore(now)) {
+      pickupFrom = now.add(const Duration(minutes: 15));
+    }
+    var pickupUntil = DateTime(now.year, now.month, now.day, _pickupUntil.hour, _pickupUntil.minute);
+    if (pickupUntil.isBefore(pickupFrom) || pickupUntil.isAtSameMomentAs(pickupFrom)) {
+      pickupUntil = pickupFrom.add(const Duration(hours: 3));
+    }
+    final prep = now.isBefore(pickupFrom) ? now : pickupFrom.subtract(const Duration(minutes: 15));
     final consumeBefore = pickupUntil.add(const Duration(hours: 4));
 
     try {
@@ -302,6 +309,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
         pickupAvailableFrom: pickupFrom,
         pickupAvailableUntil: pickupUntil,
         consumeBefore: consumeBefore,
+        preparationDateTime: prep,
       );
 
       if (!mounted) return;

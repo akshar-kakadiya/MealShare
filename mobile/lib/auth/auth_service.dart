@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
+import 'package:mealshare_mobile/config/api_config.dart';
 
 enum UserRole {
   donor,
@@ -52,7 +53,8 @@ class AuthService extends ChangeNotifier {
       final auth = fb.FirebaseAuth.instance;
       _firebaseInitialized = true;
       auth.authStateChanges().listen(_onFirebaseAuthStateChanged);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Firebase Auth initialization check error: $e');
       _firebaseInitialized = false;
       _authState = AuthState.unauthenticated;
       notifyListeners();
@@ -88,9 +90,9 @@ class AuthService extends ChangeNotifier {
         _displayName = credential.user?.displayName;
         _authState = AuthState.authenticated;
         _devToken = null;
-      } else {
-        // Fallback simulated session for dev/offline environments
-        _uid = 'dev-user-${email.split('@').first}';
+      } else if (ApiConfig.isMockMode) {
+        // Fallback simulated session strictly for offline prototype mode
+        _uid = 'mock-user-${email.split('@').first}';
         _email = email;
         _displayName = email.split('@').first;
         _devToken = 'mock-dev-token-$_uid';
@@ -104,6 +106,8 @@ class AuthService extends ChangeNotifier {
         } else {
           _role = _role ?? UserRole.receiver;
         }
+      } else {
+        throw StateError('Firebase Authentication failed to initialize. Real authentication required.');
       }
       notifyListeners();
     } catch (e) {
@@ -128,13 +132,15 @@ class AuthService extends ChangeNotifier {
         _role = role;
         _authState = AuthState.authenticated;
         _devToken = null;
-      } else {
-        _uid = 'dev-user-${email.split('@').first}';
+      } else if (ApiConfig.isMockMode) {
+        _uid = 'mock-user-${email.split('@').first}';
         _email = email;
         _displayName = name;
         _role = role;
         _devToken = 'mock-dev-token-$_uid';
         _authState = AuthState.authenticated;
+      } else {
+        throw StateError('Firebase Authentication failed to initialize. Real authentication required.');
       }
       notifyListeners();
     } catch (e) {
@@ -163,13 +169,12 @@ class AuthService extends ChangeNotifier {
   /// Get Firebase ID token for API calls
   Future<String?> getIdToken() async {
     if (_firebaseInitialized) {
-      try {
-        return await fb.FirebaseAuth.instance.currentUser?.getIdToken();
-      } catch (_) {
-        return _devToken;
-      }
+      return await fb.FirebaseAuth.instance.currentUser?.getIdToken();
     }
-    return _devToken;
+    if (ApiConfig.isMockMode) {
+      return _devToken;
+    }
+    return null;
   }
 
   void setRole(UserRole role) {

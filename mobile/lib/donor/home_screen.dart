@@ -30,6 +30,7 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
     await state.fetchDonorDonations();
     await state.fetchIncomingRequestsForDonor();
     await state.fetchNotificationsRemote();
+    await state.fetchDonorProfileRemote();
   }
 
   @override

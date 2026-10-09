@@ -19,9 +19,13 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
   REJECTED: { bg: 'bg-red-50', text: 'text-red-700', label: 'Rejected' },
   WITHDRAWN: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Withdrawn' },
   // Pickup statuses
+  PICKUP_PENDING: { bg: 'bg-amber-50', text: 'text-amber-700', label: 'Pickup Pending' },
   ASSIGNED: { bg: 'bg-blue-50', text: 'text-blue-700', label: 'Assigned' },
+  EN_ROUTE_TO_PICKUP: { bg: 'bg-blue-50', text: 'text-blue-700', label: 'En Route to Pickup' },
   EN_ROUTE: { bg: 'bg-violet-50', text: 'text-violet-700', label: 'En Route' },
+  AT_PICKUP: { bg: 'bg-purple-50', text: 'text-purple-700', label: 'At Pickup' },
   OTP_VERIFIED: { bg: 'bg-indigo-50', text: 'text-indigo-700', label: 'OTP Verified' },
+  IN_TRANSIT: { bg: 'bg-cyan-50', text: 'text-cyan-700', label: 'In Transit' },
   DELIVERED: { bg: 'bg-emerald-50', text: 'text-emerald-700', label: 'Delivered' },
   FAILED: { bg: 'bg-red-50', text: 'text-red-700', label: 'Failed' },
   // User statuses

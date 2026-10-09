@@ -54,4 +54,12 @@ public class AdminPickupController {
         PickupResponse response = pickupService.getAdminPickupDetail(pickupId);
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/{pickupId}/tracking")
+    public ResponseEntity<com.mealshare.pickup.dto.LiveTrackingDto> getLiveTracking(
+            @AuthenticationPrincipal FirebasePrincipal principal,
+            @PathVariable UUID pickupId) {
+        com.mealshare.pickup.dto.LiveTrackingDto response = pickupService.getLiveTracking(principal.uid(), pickupId);
+        return ResponseEntity.ok(response);
+    }
 }

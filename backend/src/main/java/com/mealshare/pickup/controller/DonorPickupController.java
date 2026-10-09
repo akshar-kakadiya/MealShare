@@ -69,4 +69,13 @@ public class DonorPickupController {
         DonorPickupOtpResponse response = pickupService.getOtpForDonor(principal.uid(), pickupId, httpRequest);
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/{pickupId}/tracking")
+    @Operation(summary = "Get live tracking for active pickup journey")
+    public ResponseEntity<com.mealshare.pickup.dto.LiveTrackingDto> getLiveTracking(
+            @AuthenticationPrincipal FirebasePrincipal principal,
+            @PathVariable UUID pickupId) {
+        com.mealshare.pickup.dto.LiveTrackingDto tracking = pickupService.getLiveTracking(principal.uid(), pickupId);
+        return ResponseEntity.ok(tracking);
+    }
 }

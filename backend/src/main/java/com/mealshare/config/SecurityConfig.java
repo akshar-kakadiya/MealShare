@@ -44,8 +44,10 @@ public class SecurityConfig {
                     "/api-docs/**",
                     "/v3/api-docs/**"
                 ).permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/evidence/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/evidence/**").authenticated()
                 .requestMatchers("/api/v1/users/register").authenticated() // any authenticated firebase user
-                .requestMatchers("/api/v1/users/me").hasRole("USER") // Registered users
+                .requestMatchers("/api/v1/users/me").authenticated() // any authenticated firebase user (returns profile or 404)
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/v1/donor/**").hasRole("DONOR")
                 .requestMatchers("/api/v1/receiver/**").hasRole("RECEIVER")

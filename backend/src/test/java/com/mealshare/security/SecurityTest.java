@@ -77,14 +77,15 @@ class SecurityTest {
     }
 
     @Test
-    void validToken_UserNotFound_ShouldReturn403ForMe() throws Exception {
+    void validToken_UserNotFound_ShouldReturn404ForMe() throws Exception {
         when(firebaseTokenValidator.verifyIdToken("valid-token")).thenReturn(mockToken);
         when(userRepository.findByFirebaseUid("valid-uid")).thenReturn(Optional.empty());
+        when(userService.findByFirebaseUid("valid-uid")).thenReturn(Optional.empty());
 
-        // /me requires ROLE_USER, but unregistered user gets ROLE_UNREGISTERED
+        // /me allows any authenticated Firebase user; UserController returns 404 if not registered in PostgreSQL
         mockMvc.perform(get("/api/v1/users/me")
                 .header("Authorization", "Bearer valid-token"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -105,6 +106,7 @@ class SecurityTest {
         mockUser.setStatus(UserStatus.SUSPENDED);
         when(firebaseTokenValidator.verifyIdToken("valid-token")).thenReturn(mockToken);
         when(userRepository.findByFirebaseUid("valid-uid")).thenReturn(Optional.of(mockUser));
+        when(userService.findByFirebaseUid("valid-uid")).thenReturn(Optional.of(UserResponse.fromEntity(mockUser)));
 
         mockMvc.perform(get("/api/v1/users/me")
                 .header("Authorization", "Bearer valid-token"))

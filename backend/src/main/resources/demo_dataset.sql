@@ -6,12 +6,12 @@
 -- =============================================================================
 
 -- Clean up any transient demo records while preserving schema
+DELETE FROM ratings;
 DELETE FROM audit_logs;
 DELETE FROM notifications;
 DELETE FROM pickups;
 DELETE FROM donation_requests;
 DELETE FROM donations;
-DELETE FROM volunteer_profiles;
 DELETE FROM receiver_organizations;
 DELETE FROM donor_profiles;
 DELETE FROM users;

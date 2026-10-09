@@ -61,6 +61,7 @@ class ApiConfig {
   static String donorPickupsByDonationUrl(String donationId) => '$donorPickupsUrl/by-donation/$donationId';
   static String donorPickupDetailUrl(String id) => '$donorPickupsUrl/$id';
   static String donorPickupOtpUrl(String id) => '$donorPickupsUrl/$id/otp';
+  static String get donorProfileUrl => '$baseUrl$apiPrefix/donor/profile';
 
   // Receiver endpoints
   static String get receiverNearbyDonationsUrl => '$baseUrl$apiPrefix/receiver/donations/nearby';
@@ -71,16 +72,33 @@ class ApiConfig {
   static String receiverWithdrawRequestUrl(String id) => '$receiverRequestsUrl/$id/withdraw';
   static String get receiverProfileUrl => '$baseUrl$apiPrefix/receiver/profile';
 
-  // Receiver pickups endpoints (direct food collection)
+  // Receiver pickups endpoints (direct food collection & operational redistribution)
   static String get receiverPickupsUrl => '$baseUrl$apiPrefix/receiver/pickups';
   static String receiverPickupDetailUrl(String id) => '$receiverPickupsUrl/$id';
+  static String receiverEnsurePickupForRequestUrl(String requestId) => '$receiverPickupsUrl/ensure-for-request/$requestId';
+  static String receiverStartJourneyUrl(String id) => '$receiverPickupsUrl/$id/start-journey';
+  static String receiverLocationUrl(String id) => '$receiverPickupsUrl/$id/location';
+  static String receiverReachedLocationUrl(String id) => '$receiverPickupsUrl/$id/reached-location';
+  static String receiverInspectFoodUrl(String id) => '$receiverPickupsUrl/$id/inspect-food';
+  static String receiverVerifyAndPickupUrl(String id) => '$receiverPickupsUrl/$id/verify-and-pickup';
+  static String receiverStartDeliveryUrl(String id) => '$receiverPickupsUrl/$id/start-delivery';
+  static String receiverCompleteDeliveryUrl(String id) => '$receiverPickupsUrl/$id/complete-delivery';
+  static String receiverTrackingUrl(String id) => '$receiverPickupsUrl/$id/tracking';
   static String receiverVerifyOtpUrl(String id) => '$receiverPickupsUrl/$id/verify-otp';
   static String receiverCompletePickupUrl(String id) => '$receiverPickupsUrl/$id/complete';
 
+  // Donor tracking endpoint
+  static String donorTrackingUrl(String id) => '$donorPickupsUrl/$id/tracking';
+
+  // Evidence photo endpoints
+  static String get evidenceUploadUrl => '$baseUrl$apiPrefix/evidence/upload';
+  static String get evidenceUploadBase64Url => '$baseUrl$apiPrefix/evidence/upload-base64';
+  static String evidenceFileUrl(String filename) => '$baseUrl$apiPrefix/evidence/$filename';
 
   // Admin endpoints (for reference)
   static String get adminPickupsUrl => '$baseUrl$apiPrefix/admin/pickups';
   static String adminPickupDetailUrl(String id) => '$adminPickupsUrl/$id';
+  static String adminTrackingUrl(String id) => '$adminPickupsUrl/$id/tracking';
 
   // Ratings endpoints
   static String get ratingsUrl => '$baseUrl$apiPrefix/ratings';

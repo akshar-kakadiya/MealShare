@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../theme/app_colors.dart';
 import '../auth/screens/login_screen.dart';
 import '../auth/screens/register_screen.dart';
+import '../donor/donor_pickups_screen.dart';
 import '../receiver/receiver_pickups_screen.dart';
 import '../donor/home_screen.dart';
 import '../donor/donations_list_screen.dart';
@@ -35,11 +36,6 @@ final router = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       builder: (c, s) => const RegisterScreen(),
     ),
-    GoRoute(
-      path: '/receiver/pickups',
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (c, s) => const ReceiverPickupsScreen(),
-    ),
 
     // ─── Donor Shell ───
     StatefulShellRoute.indexedStack(
@@ -50,6 +46,7 @@ final router = GoRouter(
             NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
             NavigationDestination(icon: Icon(Icons.volunteer_activism_outlined), selectedIcon: Icon(Icons.volunteer_activism), label: 'Donations'),
             NavigationDestination(icon: Icon(Icons.inbox_outlined), selectedIcon: Icon(Icons.inbox), label: 'Requests'),
+            NavigationDestination(icon: Icon(Icons.local_shipping_outlined), selectedIcon: Icon(Icons.local_shipping), label: 'Pickup'),
             NavigationDestination(icon: Icon(Icons.notifications_outlined), selectedIcon: Icon(Icons.notifications), label: 'Alerts'),
             NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Profile'),
           ],
@@ -64,6 +61,9 @@ final router = GoRouter(
         ]),
         StatefulShellBranch(routes: [
           GoRoute(path: '/donor/requests', builder: (c, s) => const DonorRequestsScreen()),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(path: '/donor/pickups', builder: (c, s) => const DonorPickupsScreen()),
         ]),
         StatefulShellBranch(routes: [
           GoRoute(path: '/donor/notifications', builder: (c, s) => const DonorNotificationsScreen()),
@@ -83,6 +83,7 @@ final router = GoRouter(
             NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
             NavigationDestination(icon: Icon(Icons.search_outlined), selectedIcon: Icon(Icons.search), label: 'Discover'),
             NavigationDestination(icon: Icon(Icons.inbox_outlined), selectedIcon: Icon(Icons.inbox), label: 'Requests'),
+            NavigationDestination(icon: Icon(Icons.local_shipping_outlined), selectedIcon: Icon(Icons.local_shipping), label: 'Pickup'),
             NavigationDestination(icon: Icon(Icons.notifications_outlined), selectedIcon: Icon(Icons.notifications), label: 'Alerts'),
             NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Profile'),
           ],
@@ -97,6 +98,9 @@ final router = GoRouter(
         ]),
         StatefulShellBranch(routes: [
           GoRoute(path: '/receiver/requests', builder: (c, s) => const ReceiverMyRequestsScreen()),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(path: '/receiver/pickups', builder: (c, s) => const ReceiverPickupsScreen()),
         ]),
         StatefulShellBranch(routes: [
           GoRoute(path: '/receiver/notifications', builder: (c, s) => const ReceiverNotificationsScreen()),

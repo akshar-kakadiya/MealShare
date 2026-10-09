@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../mock/app_state.dart';
+import '../mock/models.dart';
 import '../shared/api_client.dart';
 import '../config/api_config.dart';
 import '../theme/app_colors.dart';
@@ -168,6 +170,150 @@ class _DonorDonationDetailsScreenState extends State<DonorDonationDetailsScreen>
     }
   }
 
+  Future<void> _editDonation(AppState state, Donation donation) async {
+    final titleCtrl = TextEditingController(text: donation.title);
+    final descCtrl = TextEditingController(text: donation.description);
+    final qtyCtrl = TextEditingController(text: donation.quantity.toString());
+    final addrCtrl = TextEditingController(text: donation.pickupAddress);
+    DateTime? newPickupUntil;
+    DateTime? newConsumeBefore;
+    bool saving = false;
+    String? errorMsg;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Donation'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (errorMsg != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(errorMsg!, style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                  ),
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(labelText: 'Title'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descCtrl,
+                  decoration: const InputDecoration(labelText: 'Description'),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: qtyCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(labelText: 'Quantity (${donation.unit})'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: addrCtrl,
+                  decoration: const InputDecoration(labelText: 'Pickup Address'),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Extend Availability & Freshness Window:',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    ActionChip(
+                      label: const Text('+2 Hours'),
+                      onPressed: () {
+                        setDialogState(() {
+                          newPickupUntil = DateTime.now().add(const Duration(hours: 2));
+                          newConsumeBefore = DateTime.now().add(const Duration(hours: 4));
+                        });
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('+4 Hours'),
+                      onPressed: () {
+                        setDialogState(() {
+                          newPickupUntil = DateTime.now().add(const Duration(hours: 4));
+                          newConsumeBefore = DateTime.now().add(const Duration(hours: 6));
+                        });
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('+8 Hours'),
+                      onPressed: () {
+                        setDialogState(() {
+                          newPickupUntil = DateTime.now().add(const Duration(hours: 8));
+                          newConsumeBefore = DateTime.now().add(const Duration(hours: 12));
+                        });
+                      },
+                    ),
+                  ],
+                ),
+                if (newPickupUntil != null && newConsumeBefore != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'New Pickup Until: ${DateFormat('hh:mm a').format(newPickupUntil!)}\nNew Safe Consume: ${DateFormat('hh:mm a').format(newConsumeBefore!)}',
+                      style: const TextStyle(fontSize: 12, color: AppColors.success, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      setDialogState(() {
+                        saving = true;
+                        errorMsg = null;
+                      });
+                      try {
+                        final qty = double.tryParse(qtyCtrl.text.trim());
+                        await state.updateDonationRemote(
+                          donation.id,
+                          title: titleCtrl.text.trim(),
+                          description: descCtrl.text.trim(),
+                          quantity: qty,
+                          pickupAddress: addrCtrl.text.trim(),
+                          pickupAvailableUntil: newPickupUntil,
+                          consumeBefore: newConsumeBefore,
+                        );
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Donation updated successfully!'), backgroundColor: AppColors.success),
+                          );
+                        }
+                      } catch (e) {
+                        setDialogState(() {
+                          saving = false;
+                          errorMsg = 'Failed to update: $e';
+                        });
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
@@ -186,12 +332,19 @@ class _DonorDonationDetailsScreenState extends State<DonorDonationDetailsScreen>
       appBar: AppBar(
         title: const Text('Donation Details'),
         actions: [
-          if (donation.status == 'AVAILABLE')
+          if (donation.status == 'AVAILABLE' || donation.status == 'APPROVED') ...[
             IconButton(
-              icon: const Icon(Icons.cancel_outlined, color: AppColors.error),
-              tooltip: 'Cancel Donation',
-              onPressed: () => _cancelDonation(state, donation.id),
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Edit Donation',
+              onPressed: () => _editDonation(state, donation),
             ),
+            if (donation.status == 'AVAILABLE')
+              IconButton(
+                icon: const Icon(Icons.cancel_outlined, color: AppColors.error),
+                tooltip: 'Cancel Donation',
+                onPressed: () => _cancelDonation(state, donation.id),
+              ),
+          ],
         ],
       ),
       body: ListView(
@@ -440,7 +593,7 @@ class _DonorDonationDetailsScreenState extends State<DonorDonationDetailsScreen>
               final receiverName = p['receiverOrganizationName']?.toString() ?? 'Receiver Organization';
               final status = p['status']?.toString() ?? 'ASSIGNED';
               final scheduledAt = p['scheduledAt']?.toString() ?? '';
-              final canViewOtp = status == 'ASSIGNED';
+              final canViewOtp = status == 'ASSIGNED' || status == 'PICKUP_PENDING' || status == 'EN_ROUTE_TO_PICKUP' || status == 'AT_PICKUP';
               return Card(
                 margin: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: Padding(

@@ -649,7 +649,11 @@ class AppState extends ChangeNotifier {
     final cat = (json['foodCategory'] ?? 'Meals').toString();
     switch (cat.toUpperCase()) {
       case 'MEALS':
+      case 'PREPARED_MEALS':
         icon = Icons.rice_bowl;
+        break;
+      case 'PACKAGED_FOOD':
+        icon = Icons.inventory_2;
         break;
       case 'BAKERY':
         icon = Icons.bakery_dining;
@@ -657,6 +661,9 @@ class AppState extends ChangeNotifier {
       case 'FRUITS':
       case 'VEGETABLES':
         icon = Icons.eco;
+        break;
+      case 'GRAINS':
+        icon = Icons.grain;
         break;
       case 'DAIRY':
         icon = Icons.egg_alt;
@@ -765,6 +772,31 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  String _mapCategoryToBackend(String cat) {
+    switch (cat.toUpperCase()) {
+      case 'MEALS':
+      case 'PREPARED MEALS':
+      case 'PREPARED_MEALS':
+        return 'PREPARED_MEALS';
+      case 'PACKAGED':
+      case 'PACKAGED FOOD':
+      case 'PACKAGED_FOOD':
+        return 'PACKAGED_FOOD';
+      case 'BAKERY':
+        return 'BAKERY';
+      case 'FRUITS':
+        return 'FRUITS';
+      case 'VEGETABLES':
+        return 'VEGETABLES';
+      case 'GRAINS':
+        return 'GRAINS';
+      case 'DAIRY':
+        return 'DAIRY';
+      default:
+        return 'OTHER';
+    }
+  }
+
   Future<Donation> createDonationRemote({
     required String title,
     required String description,
@@ -780,15 +812,23 @@ class AppState extends ChangeNotifier {
     required DateTime pickupAvailableFrom,
     required DateTime pickupAvailableUntil,
     required DateTime consumeBefore,
+    DateTime? preparationDateTime,
     double latitude = 12.9716,
     double longitude = 77.5946,
   }) async {
+    final now = DateTime.now();
+    final effectivePrep = preparationDateTime ??
+        (pickupAvailableFrom.isAfter(now)
+            ? now
+            : pickupAvailableFrom.subtract(const Duration(minutes: 30)));
+
     final payload = {
       'title': title,
       'description': description,
-      'foodCategory': category.toUpperCase(),
+      'foodCategory': _mapCategoryToBackend(category),
       'quantity': quantity.toDouble(),
       'quantityUnit': unit,
+      'preparationDateTime': effectivePrep.toUtc().toIso8601String(),
       'storageCondition': storageCondition,
       'packagingCondition': packagingCondition,
       'hasAllergens': hasAllergens,
@@ -963,6 +1003,18 @@ class AppState extends ChangeNotifier {
     return [];
   }
 
+  Future<List<Map<String, dynamic>>> fetchDonorPickupsRemote() async {
+    if (apiClient != null) {
+      final res = await apiClient!.get(ApiConfig.donorPickupsUrl);
+      if (res is Map<String, dynamic> && res['content'] is List) {
+        return List<Map<String, dynamic>>.from(res['content']);
+      } else if (res is List) {
+        return List<Map<String, dynamic>>.from(res);
+      }
+    }
+    return [];
+  }
+
   Future<Map<String, dynamic>> fetchDonorPickupOtpRemote(String pickupId) async {
     if (apiClient != null) {
       final res = await apiClient!.get(ApiConfig.donorPickupOtpUrl(pickupId));
@@ -973,6 +1025,140 @@ class AppState extends ChangeNotifier {
       throw ApiException(statusCode: 503, message: "API client not initialized. Cannot reach backend.");
     }
     return {};
+  }
+
+  Future<void> updateDonationRemote(String id, {
+    String? title,
+    String? description,
+    double? quantity,
+    String? pickupAddress,
+    DateTime? pickupAvailableUntil,
+    DateTime? consumeBefore,
+  }) async {
+    if (apiClient != null) {
+      final body = <String, dynamic>{};
+      if (title != null) body['title'] = title;
+      if (description != null) body['description'] = description;
+      if (quantity != null) body['quantity'] = quantity;
+      if (pickupAddress != null) body['pickupAddress'] = pickupAddress;
+      if (pickupAvailableUntil != null) body['pickupAvailableUntil'] = pickupAvailableUntil.toUtc().toIso8601String();
+      if (consumeBefore != null) body['consumeBefore'] = consumeBefore.toUtc().toIso8601String();
+      await apiClient!.patch(ApiConfig.donorDonationDetailUrl(id), body: body);
+      await fetchDonorDonations();
+    }
+  }
+
+  Future<void> fetchDonorProfileRemote() async {
+    if (apiClient == null) return;
+    try {
+      final prof = await apiClient!.get(ApiConfig.donorProfileUrl);
+      final me = await apiClient!.get(ApiConfig.usersMeUrl);
+      if (prof is Map<String, dynamic>) {
+        final meMap = me is Map<String, dynamic> ? me : <String, dynamic>{};
+        currentUser = UserProfile(
+          id: prof['id']?.toString() ?? currentUser.id,
+          name: prof['entityName']?.toString() ?? meMap['name']?.toString() ?? currentUser.name,
+          role: 'DONOR',
+          email: meMap['email']?.toString() ?? currentUser.email,
+          phone: meMap['phone']?.toString() ?? currentUser.phone,
+          address: prof['addressText']?.toString() ?? currentUser.address,
+          organizationType: prof['donorType']?.toString() ?? currentUser.organizationType,
+          isVerified: meMap['status']?.toString() == 'ACTIVE',
+          joinedAt: prof['createdAt'] != null
+              ? DateTime.tryParse(prof['createdAt'].toString()) ?? currentUser.joinedAt
+              : currentUser.joinedAt,
+          ratingAverage: (prof['ratingAverage'] as num?)?.toDouble() ?? 5.0,
+          completedCount: (prof['completedDonationsCount'] as num?)?.toInt() ?? 0,
+          latitude: (prof['latitude'] as num?)?.toDouble(),
+          longitude: (prof['longitude'] as num?)?.toDouble(),
+        );
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> updateDonorProfileRemote({
+    required String entityName,
+    required String donorType,
+    required String addressText,
+    double latitude = 12.9716,
+    double longitude = 77.5946,
+    bool policyAccepted = true,
+  }) async {
+    if (apiClient != null) {
+      await apiClient!.put(
+        ApiConfig.donorProfileUrl,
+        body: {
+          'donorType': donorType,
+          'entityName': entityName,
+          'addressText': addressText,
+          'latitude': latitude,
+          'longitude': longitude,
+          'policyAccepted': policyAccepted,
+        },
+      );
+      await fetchDonorProfileRemote();
+    }
+  }
+
+  Future<void> fetchReceiverProfileRemote() async {
+    if (apiClient == null) return;
+    try {
+      final prof = await apiClient!.get(ApiConfig.receiverProfileUrl);
+      final me = await apiClient!.get(ApiConfig.usersMeUrl);
+      if (prof is Map<String, dynamic>) {
+        final meMap = me is Map<String, dynamic> ? me : <String, dynamic>{};
+        currentUser = UserProfile(
+          id: prof['id']?.toString() ?? currentUser.id,
+          name: prof['orgName']?.toString() ?? meMap['name']?.toString() ?? currentUser.name,
+          role: 'RECEIVER',
+          email: meMap['email']?.toString() ?? currentUser.email,
+          phone: meMap['phone']?.toString() ?? currentUser.phone,
+          address: prof['addressText']?.toString() ?? currentUser.address,
+          organizationType: prof['orgType']?.toString() ?? currentUser.organizationType,
+          isVerified: prof['verificationStatus']?.toString() == 'APPROVED',
+          joinedAt: prof['createdAt'] != null
+              ? DateTime.tryParse(prof['createdAt'].toString()) ?? currentUser.joinedAt
+              : currentUser.joinedAt,
+          ratingAverage: (prof['ratingAverage'] as num?)?.toDouble() ?? 5.0,
+          completedCount: 0,
+          registrationNumber: prof['registrationNumber']?.toString(),
+          beneficiaryCapacity: (prof['beneficiaryCapacity'] as num?)?.toInt(),
+          serviceRadiusMeters: (prof['serviceRadiusMeters'] as num?)?.toDouble(),
+          latitude: (prof['serviceLatitude'] as num?)?.toDouble(),
+          longitude: (prof['serviceLongitude'] as num?)?.toDouble(),
+        );
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> updateReceiverProfileRemote({
+    required String orgName,
+    required String orgType,
+    required String registrationNumber,
+    required String addressText,
+    double serviceLatitude = 12.9716,
+    double serviceLongitude = 77.5946,
+    double serviceRadiusMeters = 10000.0,
+    int beneficiaryCapacity = 50,
+  }) async {
+    if (apiClient != null) {
+      await apiClient!.put(
+        ApiConfig.receiverProfileUrl,
+        body: {
+          'orgType': orgType,
+          'orgName': orgName,
+          'registrationNumber': registrationNumber,
+          'addressText': addressText,
+          'serviceLatitude': serviceLatitude,
+          'serviceLongitude': serviceLongitude,
+          'serviceRadiusMeters': serviceRadiusMeters,
+          'beneficiaryCapacity': beneficiaryCapacity,
+        },
+      );
+      await fetchReceiverProfileRemote();
+    }
   }
 
   Future<void> fetchNearbyDonations({

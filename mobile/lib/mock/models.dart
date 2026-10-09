@@ -12,6 +12,14 @@ class UserProfile {
   final DateTime joinedAt;
   final String? avatarUrl;
 
+  final double ratingAverage;
+  final int completedCount;
+  final String? registrationNumber;
+  final int? beneficiaryCapacity;
+  final double? serviceRadiusMeters;
+  final double? latitude;
+  final double? longitude;
+
   UserProfile({
     required this.id,
     required this.name,
@@ -23,6 +31,13 @@ class UserProfile {
     this.isVerified = false,
     DateTime? joinedAt,
     this.avatarUrl,
+    this.ratingAverage = 5.0,
+    this.completedCount = 0,
+    this.registrationNumber,
+    this.beneficiaryCapacity,
+    this.serviceRadiusMeters,
+    this.latitude,
+    this.longitude,
   }) : joinedAt = joinedAt ?? DateTime.now();
 }
 

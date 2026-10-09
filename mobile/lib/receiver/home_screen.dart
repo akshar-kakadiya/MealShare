@@ -29,6 +29,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
     await state.fetchNearbyDonations();
     await state.fetchReceiverRequests();
     await state.fetchNotificationsRemote();
+    await state.fetchReceiverProfileRemote();
   }
 
   @override
