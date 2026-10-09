@@ -21,10 +21,15 @@ class ApiConfig {
     _customBaseUrl = url;
   }
 
+  /// Default cloud backend URL deployed on Render
+  static const String defaultCloudUrl = 'https://mealshare-api.onrender.com';
+
   /// Automatically resolves base URL depending on platform:
-  /// - Web: http://localhost:8081
+  /// - Environment define: `BACKEND_URL` (highest priority)
+  /// - Cloud switch: `USE_CLOUD=true` -> https://mealshare-api.onrender.com
+  /// - Web local: http://localhost:8081
   /// - Android emulator: http://10.0.2.2:8081
-  /// - iOS / Desktop / Other: http://127.0.0.1:8081
+  /// - iOS / Desktop / Reverse-tethered physical phone: http://127.0.0.1:8081
   static String get baseUrl {
     if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
       return _customBaseUrl!;
@@ -32,6 +37,10 @@ class ApiConfig {
     const envUrl = String.fromEnvironment('BACKEND_URL', defaultValue: '');
     if (envUrl.isNotEmpty) {
       return envUrl;
+    }
+    const useCloud = bool.fromEnvironment('USE_CLOUD', defaultValue: false);
+    if (useCloud) {
+      return defaultCloudUrl;
     }
     const port = String.fromEnvironment('BACKEND_PORT', defaultValue: '8081');
     if (kIsWeb) {
