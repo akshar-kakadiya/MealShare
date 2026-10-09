@@ -17,6 +17,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.concurrent.CountDownLatch;
 
 @Configuration
 public class FirebaseConfig {
@@ -31,64 +32,107 @@ public class FirebaseConfig {
     @Value("${firebase.credentials.json:}")
     private String credentialsJson;
 
+    private final CountDownLatch initLatch = new CountDownLatch(1);
+    private final java.util.concurrent.atomic.AtomicBoolean isInitializing = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.ExecutorService initExecutor = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "firebase-init-thread");
+        t.setDaemon(true);
+        return t;
+    });
+
     public FirebaseConfig(Environment environment) {
         this.environment = environment;
     }
 
     @PostConstruct
+    public void startAsyncInitialization() {
+        initExecutor.submit(this::initialize);
+    }
+
     public void initialize() {
-        if (!FirebaseApp.getApps().isEmpty()) {
-            log.info("Firebase Admin SDK is already initialized.");
+        if (!isInitializing.compareAndSet(false, true)) {
+            // Already initializing or initialized, wait for completion if needed
+            awaitInitialization(java.time.Duration.ofSeconds(10));
             return;
         }
 
-        boolean isProd = Arrays.asList(environment.getActiveProfiles()).contains("prod");
+        try {
+            if (!FirebaseApp.getApps().isEmpty()) {
+                log.info("Firebase Admin SDK is already initialized.");
+                return;
+            }
 
-        // 1. Try to load from environment JSON (preferred in cloud deployment / Render)
-        String rawJson = resolveCredentialsJson();
-        if (rawJson != null && !rawJson.isBlank()) {
-            String normalizedJson = normalizeCredentialsJson(rawJson);
-            if (normalizedJson != null && !normalizedJson.isBlank()) {
-                try (InputStream stream = new ByteArrayInputStream(normalizedJson.getBytes(StandardCharsets.UTF_8))) {
-                    FirebaseOptions options = FirebaseOptions.builder()
-                            .setCredentials(GoogleCredentials.fromStream(stream))
-                            .build();
+            boolean isProd = Arrays.asList(environment.getActiveProfiles()).contains("prod");
 
-                    FirebaseApp.initializeApp(options);
-                    log.info("Firebase Admin SDK initialized successfully from environment variable JSON (project: {}).",
-                            extractProjectId(normalizedJson));
-                    return;
-                } catch (Exception e) {
-                    log.error("Failed to initialize Firebase Admin SDK from environment variable JSON: {}", e.getMessage());
+            // 1. Try to load from environment JSON (preferred in cloud deployment / Render)
+            String rawJson = resolveCredentialsJson();
+            if (rawJson != null && !rawJson.isBlank()) {
+                String normalizedJson = normalizeCredentialsJson(rawJson);
+                if (normalizedJson != null && !normalizedJson.isBlank()) {
+                    try (InputStream stream = new ByteArrayInputStream(normalizedJson.getBytes(StandardCharsets.UTF_8))) {
+                        FirebaseOptions options = FirebaseOptions.builder()
+                                .setCredentials(GoogleCredentials.fromStream(stream))
+                                .setConnectTimeout(10000)
+                                .setReadTimeout(10000)
+                                .build();
+
+                        if (FirebaseApp.getApps().isEmpty()) {
+                            FirebaseApp.initializeApp(options);
+                        }
+                        log.info("Firebase Admin SDK initialized successfully from environment variable JSON (project: {}).",
+                                extractProjectId(normalizedJson));
+                        return;
+                    } catch (Exception e) {
+                        log.error("Failed to initialize Firebase Admin SDK from environment variable JSON: {}", e.getMessage());
+                    }
                 }
             }
-        }
 
-        // 2. Try to load from secret file path
-        String path = resolveCredentialsPath();
-        if (path != null && !path.isBlank() && new File(path).exists()) {
-            try (FileInputStream serviceAccount = new FileInputStream(path)) {
-                FirebaseOptions options = FirebaseOptions.builder()
-                        .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-                        .build();
+            // 2. Try to load from secret file path
+            String path = resolveCredentialsPath();
+            if (path != null && !path.isBlank() && new File(path).exists()) {
+                try (FileInputStream serviceAccount = new FileInputStream(path)) {
+                    FirebaseOptions options = FirebaseOptions.builder()
+                            .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+                            .setConnectTimeout(10000)
+                            .setReadTimeout(10000)
+                            .build();
 
-                FirebaseApp.initializeApp(options);
-                log.info("Firebase Admin SDK initialized successfully from credentials file: {}", path);
-                return;
-            } catch (Exception e) {
-                log.error("Failed to initialize Firebase Admin SDK from credentials file {}: {}", path, e.getMessage());
+                    if (FirebaseApp.getApps().isEmpty()) {
+                        FirebaseApp.initializeApp(options);
+                    }
+                    log.info("Firebase Admin SDK initialized successfully from credentials file: {}", path);
+                    return;
+                } catch (Exception e) {
+                    log.error("Failed to initialize Firebase Admin SDK from credentials file {}: {}", path, e.getMessage());
+                }
             }
-        }
 
-        // 3. Fallback warning / error
-        if (isProd) {
-            log.error("CRITICAL: Firebase Admin SDK credentials could not be loaded in production ('prod' profile). " +
-                      "Protected endpoints will safely reject all token verification requests with HTTP 401 until valid credentials are provided. " +
-                      "Verify FIREBASE_CREDENTIALS_JSON or a secret file at /etc/secrets/mealshare-100-firebase-adminsdk.json in Render.");
-        } else {
-            log.warn("Firebase Admin SDK credentials not configured. Firebase Authentication will not verify tokens in local development.");
-            log.warn("Set FIREBASE_CREDENTIALS_JSON, FIREBASE_CREDENTIALS_PATH, or 'firebase.credentials.path' property.");
+            // 3. Fallback warning / error
+            if (isProd) {
+                log.error("CRITICAL: Firebase Admin SDK credentials could not be loaded in production ('prod' profile). " +
+                          "Protected endpoints will safely reject all token verification requests with HTTP 401 until valid credentials are provided. " +
+                          "Verify FIREBASE_CREDENTIALS_JSON or a secret file at /etc/secrets/mealshare-100-firebase-adminsdk.json in Render.");
+            } else {
+                log.warn("Firebase Admin SDK credentials not configured. Firebase Authentication will not verify tokens in local development.");
+                log.warn("Set FIREBASE_CREDENTIALS_JSON, FIREBASE_CREDENTIALS_PATH, or 'firebase.credentials.path' property.");
+            }
+        } finally {
+            initLatch.countDown();
         }
+    }
+
+    public boolean awaitInitialization(java.time.Duration timeout) {
+        try {
+            return initLatch.await(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    public boolean isInitialized() {
+        return !FirebaseApp.getApps().isEmpty();
     }
 
     private String resolveCredentialsJson() {

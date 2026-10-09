@@ -38,7 +38,7 @@ USER mealshare
 # Default environment configurations
 ENV PORT=8081 \
     SPRING_PROFILES_ACTIVE=prod \
-    JAVA_OPTS="-XX:InitialRAMPercentage=25.0 -XX:MaxRAMPercentage=50.0 -XX:MinRAMPercentage=25.0 -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=48m -Xss512k -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
+    JAVA_OPTS="-XX:InitialRAMPercentage=25.0 -XX:MaxRAMPercentage=50.0 -XX:MinRAMPercentage=25.0 -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=48m -Xss512k -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom"
 
 EXPOSE 8081
 
