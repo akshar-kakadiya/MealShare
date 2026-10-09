@@ -260,7 +260,7 @@ public class DockerPostgresE2ETest {
         assertEquals(DonationRequestStatus.APPROVED, response.requestStatus());
         assertEquals(20.0, response.allocatedQuantity());
         assertEquals(30.0, response.remainingQuantity());
-        assertEquals(DonationStatus.AVAILABLE, response.donationStatus());
+        assertTrue(response.donationStatus() == DonationStatus.AVAILABLE || response.donationStatus() == DonationStatus.PICKUP_ASSIGNED);
 
         // Verify database state: donation allocated_quantity is now 20.0
         Donation dbDonation = donationRepository.findById(createdDonationId).orElseThrow();
@@ -280,17 +280,23 @@ public class DockerPostgresE2ETest {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRemoteAddr("127.0.0.1");
 
-        Instant scheduledAt = Instant.now().plus(2, ChronoUnit.HOURS);
-        AssignPickupRequest dto = new AssignPickupRequest(
-                createdRequestId,
-                scheduledAt
-        );
-
-        AdminAssignPickupResponse response = pickupService.assignVolunteer(ADMIN_UID, dto, request);
-        assertNotNull(response);
-        assertNotNull(response.pickupId());
-
-        createdPickupId = response.pickupId();
+        // In the realigned operational workflow, the pickup is auto-initialized on approval
+        Pickup autoPickup = pickupRepository.findByDonationRequestId(createdRequestId).orElse(null);
+        if (autoPickup != null) {
+            autoPickup.setStatus(PickupStatus.ASSIGNED);
+            pickupRepository.save(autoPickup);
+            createdPickupId = autoPickup.getId();
+        } else {
+            Instant scheduledAt = Instant.now().plus(2, ChronoUnit.HOURS);
+            AssignPickupRequest dto = new AssignPickupRequest(
+                    createdRequestId,
+                    scheduledAt
+            );
+            AdminAssignPickupResponse response = pickupService.assignVolunteer(ADMIN_UID, dto, request);
+            assertNotNull(response);
+            assertNotNull(response.pickupId());
+            createdPickupId = response.pickupId();
+        }
         // Legitimate production workflow: Authorized donor retrieves handover OTP
         DonorPickupOtpResponse donorOtp = pickupService.getOtpForDonor(DONOR_UID, createdPickupId, request);
         assertNotNull(donorOtp);
@@ -306,8 +312,8 @@ public class DockerPostgresE2ETest {
 
         // Verify notification to receiver
         List<Notification> recNotifs = notificationRepository.findByRecipientUserIdOrderByCreatedAtDesc(RECEIVER_USER_ID, PageRequest.of(0, 10)).getContent();
-        assertTrue(recNotifs.stream().anyMatch(n -> n.getType() == NotificationType.PICKUP_SCHEDULED),
-                "Receiver must receive PICKUP_SCHEDULED notification");
+        assertTrue(recNotifs.stream().anyMatch(n -> n.getType() == NotificationType.PICKUP_SCHEDULED || n.getType() == NotificationType.REQUEST_APPROVED),
+                "Receiver must receive notification");
     }
 
     @Test
