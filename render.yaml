@@ -19,6 +19,8 @@ services:
         value: 8081
       - key: SPRING_PROFILES_ACTIVE
         value: prod
+      - key: JAVA_OPTS
+        value: "-XX:InitialRAMPercentage=25.0 -XX:MaxRAMPercentage=50.0 -XX:MinRAMPercentage=25.0 -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=48m -Xss512k -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
       - key: SPRING_DATASOURCE_URL
         sync: false
       - key: SPRING_DATASOURCE_USERNAME

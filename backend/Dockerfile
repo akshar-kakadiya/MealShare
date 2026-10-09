@@ -10,7 +10,7 @@ WORKDIR /build
 # Copy Maven wrapper and POM for dependency layer caching
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-RUN chmod +x ./mvnw && ./mvnw dependency:go-offline -B
+RUN chmod +x ./mvnw && ./mvnw dependency:resolve -B
 
 # Copy application source and build JAR (skip unit tests during image build)
 COPY src/ src/
@@ -38,7 +38,7 @@ USER mealshare
 # Default environment configurations
 ENV PORT=8081 \
     SPRING_PROFILES_ACTIVE=prod \
-    JAVA_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC"
+    JAVA_OPTS="-XX:InitialRAMPercentage=25.0 -XX:MaxRAMPercentage=50.0 -XX:MinRAMPercentage=25.0 -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=48m -Xss512k -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
 
 EXPOSE 8081
 
