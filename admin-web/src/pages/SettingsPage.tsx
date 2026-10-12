@@ -82,7 +82,7 @@ export default function SettingsPage() {
         try {
           await signOut();
         } finally {
-          navigate('/login', { replace: true });
+          navigate('/', { replace: true });
         }
       }, 3000);
     } catch (err: any) {

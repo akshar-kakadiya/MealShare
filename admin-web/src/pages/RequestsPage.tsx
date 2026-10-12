@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, X, FileText, MessageSquare, AlertCircle, RefreshCw, Building, User, Info, Truck } from 'lucide-react';
+import { Search, X, FileText, MessageSquare, AlertCircle, RefreshCw, Building, User, Info } from 'lucide-react';
 import DataTable from '../components/DataTable';
 import type { Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
@@ -45,7 +44,6 @@ interface AdminRequestDetail {
 }
 
 export default function RequestsPage() {
-  const navigate = useNavigate();
   const [data, setData] = useState<AdminRequest[]>([]);
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -197,30 +195,6 @@ export default function RequestsPage() {
               })
             : '—'}
         </span>
-      ),
-    },
-    {
-      key: 'actions',
-      label: 'Actions',
-      render: (_val: any, row: AdminRequest) => (
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          {row.status === 'APPROVED' ? (
-            <button
-              onClick={() => navigate(`/admin/pickups?requestId=${row.id}`)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-semibold hover:bg-primary-700 transition shadow-sm"
-              title="Schedule Pickup for this Approved Claim"
-            >
-              <Truck className="w-3.5 h-3.5" />
-              Schedule Pickup
-            </button>
-          ) : row.status === 'PENDING' ? (
-            <span className="text-xs text-amber-600 font-medium">Awaiting Donor Review</span>
-          ) : row.status === 'COMPLETED' ? (
-            <span className="text-xs text-emerald-600 font-medium">Completed</span>
-          ) : (
-            <span className="text-xs text-gray-400">—</span>
-          )}
-        </div>
       ),
     },
   ];
@@ -406,19 +380,6 @@ export default function RequestsPage() {
                   {selectedRequest.reviewerNotes && (
                     <p className="text-sm text-gray-800 italic">"{selectedRequest.reviewerNotes}"</p>
                   )}
-                </div>
-              )}
-
-              {/* Action to schedule pickup if approved */}
-              {selectedRequest.status === 'APPROVED' && (
-                <div className="pt-2">
-                  <button
-                    onClick={() => navigate(`/admin/pickups?requestId=${selectedRequest.id}`)}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition shadow-sm"
-                  >
-                    <Truck className="w-4 h-4" />
-                    Schedule Pickup for this Request
-                  </button>
                 </div>
               )}
             </div>

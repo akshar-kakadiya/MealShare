@@ -65,7 +65,10 @@ public class UserService {
         user.setName(request.name());
         user.setPhone(request.phone());
         user.setRole(request.role());
+        user.setCategory(request.category());
         user.setStatus(UserStatus.ACTIVE);
+        user.setProfileStatus(ProfileStatus.INCOMPLETE);
+        user.setVerificationStatus(VerificationStatus.PENDING);
 
         user = userRepository.save(user);
 
@@ -74,7 +77,7 @@ public class UserService {
             if (donorProfileRepository.findByUserId(user.getId()).isEmpty()) {
                 DonorProfile dp = new DonorProfile();
                 dp.setUser(user);
-                dp.setDonorType("INDIVIDUAL");
+                dp.setDonorType(request.category() != null && !request.category().isBlank() ? request.category() : "HOTEL_RESTAURANT");
                 dp.setEntityName(user.getName() != null && !user.getName().isBlank() ? user.getName() : "Surplus Donor");
                 dp.setAddressText("Not Specified");
                 dp.setLatitude(12.9716);
@@ -82,20 +85,23 @@ public class UserService {
                 dp.setPolicyAccepted(true);
                 dp.setRatingAverage(5.0);
                 dp.setCompletedDonationsCount(0);
+                dp.setProfileStatus(ProfileStatus.INCOMPLETE);
+                dp.setVerificationStatus(VerificationStatus.PENDING);
                 donorProfileRepository.save(dp);
             }
         } else if (request.role() == UserRole.RECEIVER && receiverOrganizationRepository != null) {
             if (receiverOrganizationRepository.findByUserId(user.getId()).isEmpty()) {
                 ReceiverOrganization ro = new ReceiverOrganization();
                 ro.setUser(user);
-                ro.setOrgType("COMMUNITY");
+                ro.setOrgType(request.category() != null && !request.category().isBlank() ? request.category() : "NGO");
                 ro.setOrgName(user.getName() != null && !user.getName().isBlank() ? user.getName() : "Community Shelter");
-                ro.setRegistrationNumber("REG-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+                ro.setRegistrationNumber(null);
                 ro.setAddressText("Not Specified");
                 ro.setServiceLatitude(12.9716);
                 ro.setServiceLongitude(77.5946);
                 ro.setServiceRadiusMeters(10000.0);
-                ro.setVerificationStatus("VERIFIED");
+                ro.setVerificationStatus("PENDING");
+                ro.setProfileStatus(ProfileStatus.INCOMPLETE);
                 ro.setBeneficiaryCapacity(50);
                 ro.setRatingAverage(5.0);
                 receiverOrganizationRepository.save(ro);

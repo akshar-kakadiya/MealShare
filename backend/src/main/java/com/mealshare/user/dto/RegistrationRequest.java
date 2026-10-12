@@ -9,5 +9,10 @@ public record RegistrationRequest(
         @NotBlank(message = "Name is required") String name,
         @NotBlank(message = "Email is required") @Email(message = "Email must be valid") String email,
         String phone,
-        @NotNull(message = "Role is required") UserRole role
-) {}
+        @NotNull(message = "Role is required") UserRole role,
+        String category
+) {
+    public RegistrationRequest(String name, String email, String phone, UserRole role) {
+        this(name, email, phone, role, null);
+    }
+}

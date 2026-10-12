@@ -81,7 +81,42 @@ public class ReceiverOrganizationService {
         if (request.beneficiaryCapacity() != null) {
             org.setBeneficiaryCapacity(request.beneficiaryCapacity());
         }
+        org.setContactPerson(request.contactPerson());
+        org.setDescription(request.description());
+        org.setPhotos(request.photos());
 
+        // Update user entity information
+        if (request.fullName() != null && !request.fullName().isBlank()) {
+            user.setName(request.fullName());
+        }
+        if (request.phone() != null && !request.phone().isBlank()) {
+            user.setPhone(request.phone());
+        }
+        user.setCategory(request.orgType());
+
+        // Mark profile as COMPLETE when required fields are present
+        boolean isComplete = request.orgName() != null && !request.orgName().isBlank()
+                && request.addressText() != null && !request.addressText().isBlank()
+                && request.serviceLatitude() != null && request.serviceLongitude() != null;
+        if (isComplete) {
+            org.setProfileStatus(com.mealshare.user.ProfileStatus.COMPLETE);
+            user.setProfileStatus(com.mealshare.user.ProfileStatus.COMPLETE);
+        }
+
+        // Resubmit verification if previously ACTION_REQUIRED or REJECTED
+        if ("ACTION_REQUIRED".equalsIgnoreCase(org.getVerificationStatus()) ||
+            "REJECTED".equalsIgnoreCase(org.getVerificationStatus()) ||
+            user.getVerificationStatus() == com.mealshare.user.VerificationStatus.ACTION_REQUIRED ||
+            user.getVerificationStatus() == com.mealshare.user.VerificationStatus.REJECTED) {
+            org.setVerificationStatus("PENDING");
+            org.setRejectionReason(null);
+            org.setActionRequiredNotes(null);
+            user.setVerificationStatus(com.mealshare.user.VerificationStatus.PENDING);
+            user.setRejectionReason(null);
+            user.setActionRequiredNotes(null);
+        }
+
+        userRepository.save(user);
         org = receiverOrganizationRepository.save(org);
         return ReceiverOrganizationResponse.fromEntity(org);
     }

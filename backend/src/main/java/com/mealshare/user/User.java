@@ -32,6 +32,29 @@ public class User {
     @Column(nullable = false)
     private UserStatus status = UserStatus.PENDING_VERIFICATION;
 
+    @Column
+    private String category;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "profile_status", nullable = false)
+    private ProfileStatus profileStatus = ProfileStatus.INCOMPLETE;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_status", nullable = false)
+    private VerificationStatus verificationStatus = VerificationStatus.PENDING;
+
+    @Column(name = "rejection_reason")
+    private String rejectionReason;
+
+    @Column(name = "action_required_notes")
+    private String actionRequiredNotes;
+
+    @Column(name = "verified_at")
+    private Instant verifiedAt;
+
+    @Column(name = "verified_by")
+    private String verifiedBy;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -73,6 +96,27 @@ public class User {
 
     public UserStatus getStatus() { return status; }
     public void setStatus(UserStatus status) { this.status = status; }
+
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+
+    public ProfileStatus getProfileStatus() { return profileStatus; }
+    public void setProfileStatus(ProfileStatus profileStatus) { this.profileStatus = profileStatus; }
+
+    public VerificationStatus getVerificationStatus() { return verificationStatus; }
+    public void setVerificationStatus(VerificationStatus verificationStatus) { this.verificationStatus = verificationStatus; }
+
+    public String getRejectionReason() { return rejectionReason; }
+    public void setRejectionReason(String rejectionReason) { this.rejectionReason = rejectionReason; }
+
+    public String getActionRequiredNotes() { return actionRequiredNotes; }
+    public void setActionRequiredNotes(String actionRequiredNotes) { this.actionRequiredNotes = actionRequiredNotes; }
+
+    public Instant getVerifiedAt() { return verifiedAt; }
+    public void setVerifiedAt(Instant verifiedAt) { this.verifiedAt = verifiedAt; }
+
+    public String getVerifiedBy() { return verifiedBy; }
+    public void setVerifiedBy(String verifiedBy) { this.verifiedBy = verifiedBy; }
 
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

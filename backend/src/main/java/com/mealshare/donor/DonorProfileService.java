@@ -73,7 +73,43 @@ public class DonorProfileService {
         if (request.policyAccepted() != null) {
             profile.setPolicyAccepted(request.policyAccepted());
         }
+        profile.setContactPerson(request.contactPerson());
+        profile.setBusinessType(request.businessType());
+        profile.setEventInfo(request.eventInfo());
+        profile.setPhotos(request.photos());
 
+        // Update user entity information
+        if (request.fullName() != null && !request.fullName().isBlank()) {
+            user.setName(request.fullName());
+        }
+        if (request.phone() != null && !request.phone().isBlank()) {
+            user.setPhone(request.phone());
+        }
+        user.setCategory(request.donorType());
+
+        // Profile is considered complete when required fields are present
+        boolean isComplete = request.entityName() != null && !request.entityName().isBlank()
+                && request.addressText() != null && !request.addressText().isBlank()
+                && request.latitude() != null && request.longitude() != null;
+        if (isComplete) {
+            profile.setProfileStatus(com.mealshare.user.ProfileStatus.COMPLETE);
+            user.setProfileStatus(com.mealshare.user.ProfileStatus.COMPLETE);
+        }
+
+        // Resubmit verification if previously ACTION_REQUIRED or REJECTED
+        if (profile.getVerificationStatus() == com.mealshare.user.VerificationStatus.ACTION_REQUIRED ||
+            profile.getVerificationStatus() == com.mealshare.user.VerificationStatus.REJECTED ||
+            user.getVerificationStatus() == com.mealshare.user.VerificationStatus.ACTION_REQUIRED ||
+            user.getVerificationStatus() == com.mealshare.user.VerificationStatus.REJECTED) {
+            profile.setVerificationStatus(com.mealshare.user.VerificationStatus.PENDING);
+            profile.setRejectionReason(null);
+            profile.setActionRequiredNotes(null);
+            user.setVerificationStatus(com.mealshare.user.VerificationStatus.PENDING);
+            user.setRejectionReason(null);
+            user.setActionRequiredNotes(null);
+        }
+
+        userRepository.save(user);
         profile = donorProfileRepository.save(profile);
         return DonorProfileResponse.fromEntity(profile);
     }

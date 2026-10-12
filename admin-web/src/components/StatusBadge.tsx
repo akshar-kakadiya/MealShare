@@ -34,6 +34,9 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
   SUSPENDED: { bg: 'bg-red-50', text: 'text-red-700', label: 'Suspended' },
   // Verification statuses
   MORE_INFO_NEEDED: { bg: 'bg-amber-50', text: 'text-amber-700', label: 'More Info Needed' },
+  ACTION_REQUIRED: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'Action Required' },
+  COMPLETE: { bg: 'bg-emerald-50', text: 'text-emerald-700', label: 'Complete' },
+  INCOMPLETE: { bg: 'bg-amber-50', text: 'text-amber-700', label: 'Incomplete' },
   // Roles
   DONOR: { bg: 'bg-emerald-50', text: 'text-emerald-700', label: 'Donor' },
   RECEIVER: { bg: 'bg-blue-50', text: 'text-blue-700', label: 'Receiver' },

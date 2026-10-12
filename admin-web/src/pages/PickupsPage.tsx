@@ -5,7 +5,7 @@ import DataTable from '../components/DataTable';
 import type { Column } from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import StatCard from '../components/StatCard';
-import apiClient from '../api/client';
+import apiClient, { getBackendAssetUrl } from '../api/client';
 
 export interface Pickup {
   id: string;
@@ -573,13 +573,13 @@ export default function PickupsPage() {
                       <div>
                         <p className="text-xs text-gray-500 mb-1">Pickup Photo Evidence</p>
                         <a
-                          href={selectedPickup.pickupPhotoUrl.startsWith('http') ? selectedPickup.pickupPhotoUrl : `http://localhost:8081${selectedPickup.pickupPhotoUrl}`}
+                          href={getBackendAssetUrl(selectedPickup.pickupPhotoUrl)}
                           target="_blank"
                           rel="noreferrer"
                           className="block rounded-lg overflow-hidden border border-gray-200 hover:opacity-90"
                         >
                           <img
-                            src={selectedPickup.pickupPhotoUrl.startsWith('http') ? selectedPickup.pickupPhotoUrl : `http://localhost:8081${selectedPickup.pickupPhotoUrl}`}
+                            src={getBackendAssetUrl(selectedPickup.pickupPhotoUrl)}
                             alt="Pickup evidence"
                             className="w-full h-24 object-cover"
                           />
@@ -590,13 +590,13 @@ export default function PickupsPage() {
                       <div>
                         <p className="text-xs text-gray-500 mb-1">Delivery Photo Evidence</p>
                         <a
-                          href={selectedPickup.deliveryPhotoUrl.startsWith('http') ? selectedPickup.deliveryPhotoUrl : `http://localhost:8081${selectedPickup.deliveryPhotoUrl}`}
+                          href={getBackendAssetUrl(selectedPickup.deliveryPhotoUrl)}
                           target="_blank"
                           rel="noreferrer"
                           className="block rounded-lg overflow-hidden border border-gray-200 hover:opacity-90"
                         >
                           <img
-                            src={selectedPickup.deliveryPhotoUrl.startsWith('http') ? selectedPickup.deliveryPhotoUrl : `http://localhost:8081${selectedPickup.deliveryPhotoUrl}`}
+                            src={getBackendAssetUrl(selectedPickup.deliveryPhotoUrl)}
                             alt="Delivery evidence"
                             className="w-full h-24 object-cover"
                           />

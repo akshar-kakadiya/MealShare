@@ -42,7 +42,7 @@ export default function TopBar() {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/login', { replace: true });
+    navigate('/', { replace: true });
   };
 
   const displayName = mealshareUser?.name || 'Platform Administrator';

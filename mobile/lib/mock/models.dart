@@ -8,7 +8,17 @@ class UserProfile {
   final String phone;
   final String address;
   final String organizationType; // 'Restaurant', 'NGO', 'Community Kitchen', etc.
+  final String category;
   final bool isVerified;
+  final String profileStatus; // 'INCOMPLETE' or 'COMPLETE'
+  final String verificationStatus; // 'PENDING', 'APPROVED', 'REJECTED', 'ACTION_REQUIRED'
+  final String? rejectionReason;
+  final String? actionRequiredNotes;
+  final String? contactPerson;
+  final String? businessType;
+  final String? eventInfo;
+  final String? description;
+  final String? photos;
   final DateTime joinedAt;
   final String? avatarUrl;
 
@@ -28,7 +38,17 @@ class UserProfile {
     this.phone = '',
     this.address = '',
     this.organizationType = '',
+    this.category = '',
     this.isVerified = false,
+    this.profileStatus = 'INCOMPLETE',
+    this.verificationStatus = 'PENDING',
+    this.rejectionReason,
+    this.actionRequiredNotes,
+    this.contactPerson,
+    this.businessType,
+    this.eventInfo,
+    this.description,
+    this.photos,
     DateTime? joinedAt,
     this.avatarUrl,
     this.ratingAverage = 5.0,

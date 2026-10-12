@@ -41,6 +41,38 @@ public class DonorProfile {
     @Column(name = "completed_donations_count", nullable = false)
     private Integer completedDonationsCount = 0;
 
+    @Column(name = "contact_person")
+    private String contactPerson;
+
+    @Column(name = "business_type")
+    private String businessType;
+
+    @Column(name = "event_info")
+    private String eventInfo;
+
+    @Column(name = "photos")
+    private String photos;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "profile_status", nullable = false)
+    private com.mealshare.user.ProfileStatus profileStatus = com.mealshare.user.ProfileStatus.INCOMPLETE;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_status", nullable = false)
+    private com.mealshare.user.VerificationStatus verificationStatus = com.mealshare.user.VerificationStatus.PENDING;
+
+    @Column(name = "rejection_reason")
+    private String rejectionReason;
+
+    @Column(name = "action_required_notes")
+    private String actionRequiredNotes;
+
+    @Column(name = "verified_at")
+    private Instant verifiedAt;
+
+    @Column(name = "verified_by")
+    private String verifiedBy;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -81,6 +113,37 @@ public class DonorProfile {
     public void setRatingAverage(Double ratingAverage) { this.ratingAverage = ratingAverage; }
     public Integer getCompletedDonationsCount() { return completedDonationsCount; }
     public void setCompletedDonationsCount(Integer count) { this.completedDonationsCount = count; }
+
+    public String getContactPerson() { return contactPerson; }
+    public void setContactPerson(String contactPerson) { this.contactPerson = contactPerson; }
+
+    public String getBusinessType() { return businessType; }
+    public void setBusinessType(String businessType) { this.businessType = businessType; }
+
+    public String getEventInfo() { return eventInfo; }
+    public void setEventInfo(String eventInfo) { this.eventInfo = eventInfo; }
+
+    public String getPhotos() { return photos; }
+    public void setPhotos(String photos) { this.photos = photos; }
+
+    public com.mealshare.user.ProfileStatus getProfileStatus() { return profileStatus; }
+    public void setProfileStatus(com.mealshare.user.ProfileStatus profileStatus) { this.profileStatus = profileStatus; }
+
+    public com.mealshare.user.VerificationStatus getVerificationStatus() { return verificationStatus; }
+    public void setVerificationStatus(com.mealshare.user.VerificationStatus verificationStatus) { this.verificationStatus = verificationStatus; }
+
+    public String getRejectionReason() { return rejectionReason; }
+    public void setRejectionReason(String rejectionReason) { this.rejectionReason = rejectionReason; }
+
+    public String getActionRequiredNotes() { return actionRequiredNotes; }
+    public void setActionRequiredNotes(String actionRequiredNotes) { this.actionRequiredNotes = actionRequiredNotes; }
+
+    public Instant getVerifiedAt() { return verifiedAt; }
+    public void setVerifiedAt(Instant verifiedAt) { this.verifiedAt = verifiedAt; }
+
+    public String getVerifiedBy() { return verifiedBy; }
+    public void setVerifiedBy(String verifiedBy) { this.verifiedBy = verifiedBy; }
+
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

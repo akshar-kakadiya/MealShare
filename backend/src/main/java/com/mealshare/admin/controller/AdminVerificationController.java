@@ -31,10 +31,12 @@ public class AdminVerificationController {
     @GetMapping
     public ResponseEntity<PaginatedResponse<AdminVerificationResponse>> getVerifications(
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String category,
             @RequestParam(required = false) String search,
             @PageableDefault(size = 20) Pageable pageable
     ) {
-        Page<AdminVerificationResponse> page = adminVerificationService.getVerifications(status, search, pageable);
+        Page<AdminVerificationResponse> page = adminVerificationService.getVerifications(status, role, category, search, pageable);
         return ResponseEntity.ok(PaginatedResponse.from(page));
     }
 

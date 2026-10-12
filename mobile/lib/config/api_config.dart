@@ -24,12 +24,15 @@ class ApiConfig {
   /// Default cloud backend URL deployed on Render
   static const String defaultCloudUrl = 'https://mealshare-backend.onrender.com';
 
-  /// Automatically resolves base URL depending on platform:
-  /// - Environment define: `BACKEND_URL` (highest priority)
-  /// - Cloud switch: `USE_CLOUD=true` -> https://mealshare-backend.onrender.com
-  /// - Web local: http://localhost:8081
-  /// - Android emulator: http://10.0.2.2:8081
-  /// - iOS / Desktop / Reverse-tethered physical phone: http://127.0.0.1:8081
+  /// Automatically resolves base URL depending on platform and environment flags:
+  /// 1. Runtime override: [setBaseUrl] (highest priority)
+  /// 2. Explicit environment define: `BACKEND_URL` (e.g. `--dart-define=BACKEND_URL=https://...`)
+  /// 3. Explicit local override: `USE_LOCAL=true` (e.g. `--dart-define=USE_LOCAL=true`) or `USE_CLOUD=false`
+  ///    - Web: http://localhost:8081
+  ///    - Android emulator: http://10.0.2.2:8081
+  ///    - Desktop / iOS: http://127.0.0.1:8081
+  /// 4. Default for cloud testing, physical devices, and release builds:
+  ///    https://mealshare-backend.onrender.com
   static String get baseUrl {
     if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
       return _customBaseUrl!;
@@ -38,18 +41,19 @@ class ApiConfig {
     if (envUrl.isNotEmpty) {
       return envUrl;
     }
-    const useCloud = bool.fromEnvironment('USE_CLOUD', defaultValue: false);
-    if (useCloud) {
-      return defaultCloudUrl;
+    const useLocal = bool.fromEnvironment('USE_LOCAL', defaultValue: false);
+    const useCloud = bool.fromEnvironment('USE_CLOUD', defaultValue: true);
+    if (!kReleaseMode && (useLocal || !useCloud)) {
+      const port = String.fromEnvironment('BACKEND_PORT', defaultValue: '8081');
+      if (kIsWeb) {
+        return 'http://localhost:$port';
+      }
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        return 'http://10.0.2.2:$port';
+      }
+      return 'http://127.0.0.1:$port';
     }
-    const port = String.fromEnvironment('BACKEND_PORT', defaultValue: '8081');
-    if (kIsWeb) {
-      return 'http://localhost:$port';
-    }
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:$port';
-    }
-    return 'http://127.0.0.1:$port';
+    return defaultCloudUrl;
   }
 
   static const String apiPrefix = '/api/v1';

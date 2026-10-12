@@ -14,6 +14,11 @@ public record UserResponse(
         String name,
         UserRole role,
         UserStatus status,
+        String category,
+        String profileStatus,
+        String verificationStatus,
+        String rejectionReason,
+        String actionRequiredNotes,
         Instant createdAt,
         Instant updatedAt
 ) {
@@ -25,6 +30,11 @@ public record UserResponse(
                 user.getName(),
                 user.getRole(),
                 user.getStatus(),
+                user.getCategory(),
+                user.getProfileStatus() != null ? user.getProfileStatus().name() : "INCOMPLETE",
+                user.getVerificationStatus() != null ? user.getVerificationStatus().name() : "PENDING",
+                user.getRejectionReason(),
+                user.getActionRequiredNotes(),
                 user.getCreatedAt(),
                 user.getUpdatedAt()
         );

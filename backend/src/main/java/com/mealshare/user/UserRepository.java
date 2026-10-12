@@ -30,4 +30,21 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             @Param("search") String search,
             Pageable pageable
     );
+
+    @Query("SELECT u FROM User u WHERE " +
+           "(u.role IN (:roles)) AND " +
+           "(:role IS NULL OR u.role = :role) AND " +
+           "(:verificationStatus IS NULL OR u.verificationStatus = :verificationStatus) AND " +
+           "(:category IS NULL OR LOWER(u.category) = LOWER(:category)) AND " +
+           "(:search IS NULL OR LOWER(u.name) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR LOWER(u.email) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR LOWER(u.phone) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))")
+    Page<User> searchVerifications(
+            @Param("roles") java.util.List<UserRole> roles,
+            @Param("role") UserRole role,
+            @Param("verificationStatus") VerificationStatus verificationStatus,
+            @Param("category") String category,
+            @Param("search") String search,
+            Pageable pageable
+    );
+
+    long countByVerificationStatus(VerificationStatus verificationStatus);
 }

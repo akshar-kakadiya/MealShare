@@ -5,10 +5,10 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { signIn, authError, mealshareUser, loading: authLoading } = useAuth();
+  const { signIn, authError, mealshareUser, refreshProfile } = useAuth();
 
-  const [email, setEmail] = useState('admin@mealshare.org');
-  const [password, setPassword] = useState('AdminPassword123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -76,7 +76,18 @@ export default function LoginPage() {
             {(errorMessage || authError) && (
               <div className="mb-5 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm flex items-start gap-2.5">
                 <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <span className="text-xs sm:text-sm">{errorMessage || authError}</span>
+                <div className="flex-1">
+                  <span className="text-xs sm:text-sm">{errorMessage || authError}</span>
+                  {authError && authError.includes('timed out') && (
+                    <button
+                      type="button"
+                      onClick={() => refreshProfile()}
+                      className="block mt-1 text-xs font-semibold text-primary-700 underline hover:text-primary-800"
+                    >
+                      Retry Verification
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -117,7 +128,7 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={submitting || authLoading}
+                disabled={submitting}
                 className="w-full py-2.5 bg-primary-600 text-white text-sm font-semibold rounded-lg hover:bg-primary-700 transition flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
               >
                 {submitting ? (

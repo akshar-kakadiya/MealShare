@@ -13,7 +13,6 @@ public record ReceiverOrganizationRequest(
         @NotBlank(message = "Organization name is required")
         String orgName,
 
-        @NotBlank(message = "Registration number is required")
         String registrationNumber,
 
         @NotBlank(message = "Address text is required")
@@ -33,5 +32,24 @@ public record ReceiverOrganizationRequest(
         Double serviceRadiusMeters,
 
         @Positive(message = "Beneficiary capacity must be positive")
-        Integer beneficiaryCapacity
-) {}
+        Integer beneficiaryCapacity,
+
+        String contactPerson,
+        String description,
+        String photos,
+        String fullName,
+        String phone
+) {
+    public ReceiverOrganizationRequest(
+            String orgType,
+            String orgName,
+            String registrationNumber,
+            String addressText,
+            Double serviceLatitude,
+            Double serviceLongitude,
+            Double serviceRadiusMeters,
+            Integer beneficiaryCapacity
+    ) {
+        this(orgType, orgName, registrationNumber, addressText, serviceLatitude, serviceLongitude, serviceRadiusMeters, beneficiaryCapacity, null, null, null, null, null);
+    }
+}

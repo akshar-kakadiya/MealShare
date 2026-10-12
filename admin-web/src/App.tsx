@@ -20,7 +20,8 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<LoginPage />} />
+          <Route path="/login" element={<Navigate to="/" replace />} />
           <Route
             path="/admin"
             element={
@@ -41,7 +42,7 @@ export default function App() {
             <Route path="notifications" element={<NotificationsPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
-          <Route path="*" element={<Navigate to="/admin" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

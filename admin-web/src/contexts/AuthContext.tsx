@@ -35,24 +35,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const fetchMealShareProfile = async (): Promise<MealShareUser> => {
+  const fetchMealShareProfile = async (isBackgroundCheck = false): Promise<MealShareUser> => {
     try {
-      const response = await apiClient.get('/users/me');
+      const response = await apiClient.get('/users/me', { timeout: 15000 });
       const profile: MealShareUser = response.data;
 
       if (profile.role !== 'ADMIN') {
         const errorMsg = 'Access denied. Only ADMIN users can access this portal.';
-        setAuthError(errorMsg);
         setMealshareUser(null);
-        await firebaseSignOut(auth);
+        await firebaseSignOut(auth).catch(() => {});
+        if (!isBackgroundCheck) {
+          setAuthError(errorMsg);
+        }
         throw new Error(errorMsg);
       }
 
       if (profile.status === 'SUSPENDED') {
         const errorMsg = 'Access denied. Your administrator account has been suspended.';
-        setAuthError(errorMsg);
         setMealshareUser(null);
-        await firebaseSignOut(auth);
+        await firebaseSignOut(auth).catch(() => {});
+        if (!isBackgroundCheck) {
+          setAuthError(errorMsg);
+        }
         throw new Error(errorMsg);
       }
 
@@ -60,10 +64,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthError(null);
       return profile;
     } catch (err: any) {
-      const message =
+      const status = err.response?.status;
+      let message =
         err.response?.data?.message || err.message || 'Failed to verify admin access';
-      setAuthError(message);
+
+      if (status === 404) {
+        message = 'No administrator profile found for this account.';
+        await firebaseSignOut(auth).catch(() => {});
+      } else if (status === 401) {
+        message = 'Your session has expired. Please sign in again.';
+        await firebaseSignOut(auth).catch(() => {});
+      } else if (status === 403) {
+        message = 'Access denied. You do not have administrator permissions.';
+        await firebaseSignOut(auth).catch(() => {});
+      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        message = 'Backend verification timed out. The server may be waking up. Please retry.';
+      } else if (!err.response) {
+        message = 'Unable to connect to the MealShare backend.';
+      }
+
       setMealshareUser(null);
+
+      // On initial background check on page load, if the session is invalid or not registered in DB
+      // (e.g. 404, 401, 403), do not display a misleading error banner on the login screen.
+      if (isBackgroundCheck && (status === 404 || status === 401 || status === 403)) {
+        setAuthError(null);
+      } else {
+        setAuthError(message);
+      }
+
       throw new Error(message);
     }
   };
@@ -75,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (user) {
         setLoading(true);
         try {
-          await fetchMealShareProfile();
+          await fetchMealShareProfile(true);
         } catch {
           // Handled inside fetchMealShareProfile
         } finally {
@@ -94,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     setFirebaseUser(userCredential.user);
-    return await fetchMealShareProfile();
+    return await fetchMealShareProfile(false);
   };
 
   const signOut = async () => {
@@ -103,9 +132,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await firebaseSignOut(auth);
   };
 
-  const refreshProfile = async () => {
+  const refreshProfile = async (): Promise<MealShareUser | null> => {
     if (auth.currentUser) {
-      return await fetchMealShareProfile();
+      setLoading(true);
+      setAuthError(null);
+      try {
+        return await fetchMealShareProfile(false);
+      } catch {
+        return null;
+      } finally {
+        setLoading(false);
+      }
     }
     return null;
   };

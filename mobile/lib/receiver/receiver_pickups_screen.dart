@@ -299,20 +299,26 @@ class _ReceiverPickupsScreenState extends State<ReceiverPickupsScreen> {
                   style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 16),
+                // ignore: deprecated_member_use
                 RadioListTile<bool>(
                   title: const Text('Accept (Safe & Good Condition)', style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: const Text('Food meets safety requirements and is suitable for redistribution.'),
                   value: true,
+                  // ignore: deprecated_member_use
                   groupValue: accepted,
                   activeColor: AppColors.success,
+                  // ignore: deprecated_member_use
                   onChanged: (val) => setDialogState(() => accepted = val ?? true),
                 ),
+                // ignore: deprecated_member_use
                 RadioListTile<bool>(
                   title: const Text('Reject (Unsafe / Defective)', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.error)),
                   subtitle: const Text('Food is spoiled, unhygienic, expired, or improperly stored.'),
                   value: false,
+                  // ignore: deprecated_member_use
                   groupValue: accepted,
                   activeColor: AppColors.error,
+                  // ignore: deprecated_member_use
                   onChanged: (val) => setDialogState(() => accepted = val ?? false),
                 ),
                 const SizedBox(height: 12),

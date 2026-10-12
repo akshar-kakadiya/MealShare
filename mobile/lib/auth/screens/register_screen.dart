@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:mealshare_mobile/auth/auth_service.dart';
 import 'package:mealshare_mobile/shared/api_client.dart';
 import 'package:mealshare_mobile/config/api_config.dart';
+import 'package:mealshare_mobile/mock/app_state.dart';
+import 'package:mealshare_mobile/theme/app_colors.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -19,8 +21,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   UserRole _selectedRole = UserRole.donor;
+  String _selectedCategory = 'HOTEL_RESTAURANT';
   bool _loading = false;
   String? _error;
+
+  static const Map<String, String> _donorCategories = {
+    'HOTEL_RESTAURANT': 'Hotel / Restaurant',
+    'HOSTEL_MESS': 'Hostel / Mess',
+    'EVENT_ORGANIZER': 'Event Organizer',
+    'HOUSEHOLD': 'Household',
+    'OTHER_BUSINESS': 'Other Business',
+  };
+
+  static const Map<String, String> _receiverCategories = {
+    'NGO': 'NGO',
+    'COMMUNITY_SHELTER': 'Community Shelter',
+    'COMMUNITY_GROUP': 'Community Group',
+    'INDIVIDUAL': 'Individual',
+  };
 
   @override
   void dispose() {
@@ -29,6 +47,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _phoneController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  void _onRoleChanged(UserRole role) {
+    setState(() {
+      _selectedRole = role;
+      if (role == UserRole.donor) {
+        _selectedCategory = 'HOTEL_RESTAURANT';
+      } else {
+        _selectedCategory = 'NGO';
+      }
+    });
   }
 
   Future<void> _handleRegister() async {
@@ -61,6 +90,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             'email': _emailController.text.trim(),
             if (phone.isNotEmpty) 'phone': phone,
             'role': _selectedRole.backendRole,
+            'category': _selectedCategory,
           },
         );
       } on ApiException catch (e) {
@@ -77,18 +107,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
         }
       } catch (_) {}
 
+      // Refresh app state profile
+      if (mounted) {
+        final appState = context.read<AppState>();
+        if (_selectedRole == UserRole.donor) {
+          await appState.fetchDonorProfileRemote();
+        } else {
+          await appState.fetchReceiverProfileRemote();
+        }
+      }
+
       if (!mounted) return;
 
-      // 4. Route to role-specific application
+      // 4. Navigate directly to the category-specific profile-completion screen
       switch (_selectedRole) {
         case UserRole.donor:
-          context.go('/donor/home');
+          context.go('/donor/profile');
           break;
         case UserRole.receiver:
-          context.go('/receiver/home');
+          context.go('/receiver/profile');
           break;
         default:
-          context.go('/donor/home');
+          context.go('/donor/profile');
       }
     } on ApiException catch (e) {
       setState(() {
@@ -107,19 +147,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  String _roleDisplayName(UserRole role) {
-    switch (role) {
-      case UserRole.donor:
-        return 'Food Donor';
-      case UserRole.receiver:
-        return 'Food Receiver';
-      case UserRole.admin:
-        return 'Admin';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final categories = _selectedRole == UserRole.donor ? _donorCategories : _receiverCategories;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Create Account'),
@@ -144,12 +175,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Register as a Donor or Receiver',
+                  'Choose your role to get started',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Colors.grey,
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
 
                 if (_error != null)
                   Container(
@@ -165,6 +196,67 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ),
 
+                // Role selection cards
+                Text(
+                  'I want to join as:',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _RoleCard(
+                        title: 'Donor',
+                        subtitle: 'I want to share surplus food.',
+                        icon: Icons.volunteer_activism,
+                        isSelected: _selectedRole == UserRole.donor,
+                        onTap: () => _onRoleChanged(UserRole.donor),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _RoleCard(
+                        title: 'Receiver',
+                        subtitle: 'I need food or want to distribute food.',
+                        icon: Icons.people_alt,
+                        isSelected: _selectedRole == UserRole.receiver,
+                        onTap: () => _onRoleChanged(UserRole.receiver),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Category selection dropdown
+                DropdownButtonFormField<String>(
+                  key: ValueKey(_selectedRole),
+                  initialValue: categories.containsKey(_selectedCategory) ? _selectedCategory : categories.keys.first,
+                  decoration: InputDecoration(
+                    labelText: _selectedRole == UserRole.donor ? 'Donor Category' : 'Receiver Category',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: Icon(_selectedRole == UserRole.donor ? Icons.business : Icons.group),
+                  ),
+                  items: categories.entries.map((entry) {
+                    return DropdownMenuItem(
+                      value: entry.key,
+                      child: Text(entry.value),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _selectedCategory = val);
+                    }
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // Essential signup fields
+                Text(
+                  'Account Details',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 12),
+
                 // Name field
                 TextFormField(
                   controller: _nameController,
@@ -174,7 +266,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     prefixIcon: Icon(Icons.person_outlined),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) return 'Name is required';
+                    if (value == null || value.trim().isEmpty) return 'Name is required';
                     return null;
                   },
                 ),
@@ -185,12 +277,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
-                    labelText: 'Email',
+                    labelText: 'Email Address',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) return 'Email is required';
+                    if (value == null || value.trim().isEmpty) return 'Email is required';
                     if (!value.contains('@')) return 'Enter a valid email';
                     return null;
                   },
@@ -202,7 +294,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
                   decoration: const InputDecoration(
-                    labelText: 'Phone Number (Optional)',
+                    labelText: 'Contact Number (Optional)',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.phone_outlined),
                   ),
@@ -224,36 +316,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
-
-                // Role selection
-                DropdownButtonFormField<UserRole>(
-                  initialValue: _selectedRole,
-                  decoration: const InputDecoration(
-                    labelText: 'I am a...',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.badge_outlined),
-                  ),
-                  items: UserRole.values.where((r) => r != UserRole.admin).map((role) {
-                    return DropdownMenuItem(
-                      value: role,
-                      child: Text(_roleDisplayName(role)),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _selectedRole = value);
-                    }
-                  },
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Note: Admin accounts cannot be created through registration.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
                 const SizedBox(height: 24),
 
                 // Register button
@@ -268,7 +330,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Create Account', style: TextStyle(fontSize: 16)),
+                      : const Text('Create Account & Continue', style: TextStyle(fontSize: 16)),
                 ),
                 const SizedBox(height: 16),
 
@@ -279,6 +341,73 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoleCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _RoleCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : Colors.grey.shade300,
+            width: isSelected ? 2 : 1,
+          ),
+          color: isSelected ? AppColors.primarySurface.withValues(alpha: 0.5) : Colors.white,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: isSelected ? AppColors.primary : Colors.grey.shade600, size: 20),
+                const SizedBox(width: 6),
+                Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isSelected ? AppColors.primary : Colors.black87,
+                  ),
+                ),
+                const Spacer(),
+                if (isSelected)
+                  const Icon(Icons.check_circle, color: AppColors.primary, size: 18),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Colors.grey.shade700,
+                fontSize: 11,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
     );

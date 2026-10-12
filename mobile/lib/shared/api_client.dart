@@ -30,7 +30,7 @@ class ApiException implements Exception {
 
 class ApiClient {
   final AuthService _authService;
-  static const Duration timeoutDuration = Duration(seconds: 10);
+  static const Duration timeoutDuration = Duration(seconds: 30);
 
   ApiClient(this._authService);
 

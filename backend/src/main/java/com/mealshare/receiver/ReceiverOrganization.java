@@ -23,7 +23,7 @@ public class ReceiverOrganization {
     @Column(name = "org_name", nullable = false)
     private String orgName;
 
-    @Column(name = "registration_number", nullable = false)
+    @Column(name = "registration_number")
     private String registrationNumber;
 
     @Column(name = "address_text", nullable = false)
@@ -46,6 +46,31 @@ public class ReceiverOrganization {
 
     @Column(name = "rating_average", nullable = false)
     private Double ratingAverage = 5.0;
+
+    @Column(name = "contact_person")
+    private String contactPerson;
+
+    @Column(name = "description")
+    private String description;
+
+    @Column(name = "photos")
+    private String photos;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "profile_status", nullable = false)
+    private com.mealshare.user.ProfileStatus profileStatus = com.mealshare.user.ProfileStatus.INCOMPLETE;
+
+    @Column(name = "rejection_reason")
+    private String rejectionReason;
+
+    @Column(name = "action_required_notes")
+    private String actionRequiredNotes;
+
+    @Column(name = "verified_at")
+    private Instant verifiedAt;
+
+    @Column(name = "verified_by")
+    private String verifiedBy;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -91,6 +116,31 @@ public class ReceiverOrganization {
     public void setBeneficiaryCapacity(Integer beneficiaryCapacity) { this.beneficiaryCapacity = beneficiaryCapacity; }
     public Double getRatingAverage() { return ratingAverage; }
     public void setRatingAverage(Double ratingAverage) { this.ratingAverage = ratingAverage; }
+
+    public String getContactPerson() { return contactPerson; }
+    public void setContactPerson(String contactPerson) { this.contactPerson = contactPerson; }
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+
+    public String getPhotos() { return photos; }
+    public void setPhotos(String photos) { this.photos = photos; }
+
+    public com.mealshare.user.ProfileStatus getProfileStatus() { return profileStatus; }
+    public void setProfileStatus(com.mealshare.user.ProfileStatus profileStatus) { this.profileStatus = profileStatus; }
+
+    public String getRejectionReason() { return rejectionReason; }
+    public void setRejectionReason(String rejectionReason) { this.rejectionReason = rejectionReason; }
+
+    public String getActionRequiredNotes() { return actionRequiredNotes; }
+    public void setActionRequiredNotes(String actionRequiredNotes) { this.actionRequiredNotes = actionRequiredNotes; }
+
+    public Instant getVerifiedAt() { return verifiedAt; }
+    public void setVerifiedAt(Instant verifiedAt) { this.verifiedAt = verifiedAt; }
+
+    public String getVerifiedBy() { return verifiedBy; }
+    public void setVerifiedBy(String verifiedBy) { this.verifiedBy = verifiedBy; }
+
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

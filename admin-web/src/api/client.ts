@@ -1,11 +1,43 @@
 import axios from 'axios';
 import { auth } from '../config/firebase';
 
+const resolveApiBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl && envUrl.trim() !== '') {
+    const trimmed = envUrl.trim();
+    // Safety check: if running in browser outside localhost but configured with localhost URL, use cloud backend
+    const isBrowserOnLocalhost =
+      typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    if (!isBrowserOnLocalhost && (trimmed.includes('localhost') || trimmed.includes('127.0.0.1'))) {
+      return 'https://mealshare-backend.onrender.com/api/v1';
+    }
+    return trimmed.endsWith('/api/v1') ? trimmed : `${trimmed.replace(/\/+$/, '')}/api/v1`;
+  }
+
+  if (import.meta.env.PROD) {
+    return 'https://mealshare-backend.onrender.com/api/v1';
+  }
+
+  return 'http://localhost:8081/api/v1';
+};
+
+export const API_BASE_URL = resolveApiBaseUrl();
+
+export const getBackendAssetUrl = (path: string | null | undefined): string => {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  const backendHost = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${backendHost}${cleanPath}`;
+};
+
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081/api/v1',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 15000,
 });
 
 // Attach fresh Firebase ID token to every request
@@ -26,7 +58,9 @@ apiClient.interceptors.request.use(async (config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (!error.response) {
+    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      error.message = 'Connection timed out. The server may be waking up. Please retry.';
+    } else if (!error.response) {
       error.message = 'Unable to connect to the MealShare backend.';
     } else if (error.response.status === 401) {
       error.message = 'Your session has expired. Please sign in again.';
@@ -35,6 +69,15 @@ apiClient.interceptors.response.use(
       }
     } else if (error.response.status === 403) {
       error.message = 'You do not have permission to access this resource.';
+    } else if (error.response.status === 404) {
+      if (error.config?.url?.includes('/users/me')) {
+        error.message = 'No administrator profile found for this account.';
+        if (auth.currentUser) {
+          auth.signOut();
+        }
+      } else {
+        error.message = error.response.data?.message || 'Requested resource not found.';
+      }
     } else if (error.response.data?.message) {
       error.message = error.response.data.message;
     }

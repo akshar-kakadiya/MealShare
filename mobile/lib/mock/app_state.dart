@@ -1062,6 +1062,7 @@ class AppState extends ChangeNotifier {
       final me = await apiClient!.get(ApiConfig.usersMeUrl);
       if (prof is Map<String, dynamic>) {
         final meMap = me is Map<String, dynamic> ? me : <String, dynamic>{};
+        final verStatus = prof['verificationStatus']?.toString() ?? meMap['verificationStatus']?.toString() ?? 'PENDING';
         currentUser = UserProfile(
           id: prof['id']?.toString() ?? currentUser.id,
           name: prof['entityName']?.toString() ?? meMap['name']?.toString() ?? currentUser.name,
@@ -1070,7 +1071,16 @@ class AppState extends ChangeNotifier {
           phone: meMap['phone']?.toString() ?? currentUser.phone,
           address: prof['addressText']?.toString() ?? currentUser.address,
           organizationType: prof['donorType']?.toString() ?? currentUser.organizationType,
-          isVerified: meMap['status']?.toString() == 'ACTIVE',
+          category: prof['donorType']?.toString() ?? meMap['category']?.toString() ?? currentUser.category,
+          isVerified: verStatus == 'APPROVED',
+          profileStatus: prof['profileStatus']?.toString() ?? meMap['profileStatus']?.toString() ?? 'INCOMPLETE',
+          verificationStatus: verStatus,
+          rejectionReason: prof['rejectionReason']?.toString() ?? meMap['rejectionReason']?.toString(),
+          actionRequiredNotes: prof['actionRequiredNotes']?.toString() ?? meMap['actionRequiredNotes']?.toString(),
+          contactPerson: prof['contactPerson']?.toString(),
+          businessType: prof['businessType']?.toString(),
+          eventInfo: prof['eventInfo']?.toString(),
+          photos: prof['photos']?.toString(),
           joinedAt: prof['createdAt'] != null
               ? DateTime.tryParse(prof['createdAt'].toString()) ?? currentUser.joinedAt
               : currentUser.joinedAt,
@@ -1091,6 +1101,12 @@ class AppState extends ChangeNotifier {
     double latitude = 12.9716,
     double longitude = 77.5946,
     bool policyAccepted = true,
+    String? contactPerson,
+    String? businessType,
+    String? eventInfo,
+    String? photos,
+    String? fullName,
+    String? phone,
   }) async {
     if (apiClient != null) {
       await apiClient!.put(
@@ -1102,6 +1118,12 @@ class AppState extends ChangeNotifier {
           'latitude': latitude,
           'longitude': longitude,
           'policyAccepted': policyAccepted,
+          if (contactPerson != null) 'contactPerson': contactPerson,
+          if (businessType != null) 'businessType': businessType,
+          if (eventInfo != null) 'eventInfo': eventInfo,
+          if (photos != null) 'photos': photos,
+          if (fullName != null) 'fullName': fullName,
+          if (phone != null) 'phone': phone,
         },
       );
       await fetchDonorProfileRemote();
@@ -1115,6 +1137,7 @@ class AppState extends ChangeNotifier {
       final me = await apiClient!.get(ApiConfig.usersMeUrl);
       if (prof is Map<String, dynamic>) {
         final meMap = me is Map<String, dynamic> ? me : <String, dynamic>{};
+        final verStatus = prof['verificationStatus']?.toString() ?? meMap['verificationStatus']?.toString() ?? 'PENDING';
         currentUser = UserProfile(
           id: prof['id']?.toString() ?? currentUser.id,
           name: prof['orgName']?.toString() ?? meMap['name']?.toString() ?? currentUser.name,
@@ -1123,7 +1146,15 @@ class AppState extends ChangeNotifier {
           phone: meMap['phone']?.toString() ?? currentUser.phone,
           address: prof['addressText']?.toString() ?? currentUser.address,
           organizationType: prof['orgType']?.toString() ?? currentUser.organizationType,
-          isVerified: prof['verificationStatus']?.toString() == 'APPROVED',
+          category: prof['orgType']?.toString() ?? meMap['category']?.toString() ?? currentUser.category,
+          isVerified: verStatus == 'APPROVED',
+          profileStatus: prof['profileStatus']?.toString() ?? meMap['profileStatus']?.toString() ?? 'INCOMPLETE',
+          verificationStatus: verStatus,
+          rejectionReason: prof['rejectionReason']?.toString() ?? meMap['rejectionReason']?.toString(),
+          actionRequiredNotes: prof['actionRequiredNotes']?.toString() ?? meMap['actionRequiredNotes']?.toString(),
+          contactPerson: prof['contactPerson']?.toString(),
+          description: prof['description']?.toString(),
+          photos: prof['photos']?.toString(),
           joinedAt: prof['createdAt'] != null
               ? DateTime.tryParse(prof['createdAt'].toString()) ?? currentUser.joinedAt
               : currentUser.joinedAt,
@@ -1143,12 +1174,17 @@ class AppState extends ChangeNotifier {
   Future<void> updateReceiverProfileRemote({
     required String orgName,
     required String orgType,
-    required String registrationNumber,
+    String? registrationNumber,
     required String addressText,
     double serviceLatitude = 12.9716,
     double serviceLongitude = 77.5946,
     double serviceRadiusMeters = 10000.0,
     int beneficiaryCapacity = 50,
+    String? contactPerson,
+    String? description,
+    String? photos,
+    String? fullName,
+    String? phone,
   }) async {
     if (apiClient != null) {
       await apiClient!.put(
@@ -1156,12 +1192,17 @@ class AppState extends ChangeNotifier {
         body: {
           'orgType': orgType,
           'orgName': orgName,
-          'registrationNumber': registrationNumber,
+          if (registrationNumber != null && registrationNumber.isNotEmpty) 'registrationNumber': registrationNumber,
           'addressText': addressText,
           'serviceLatitude': serviceLatitude,
           'serviceLongitude': serviceLongitude,
           'serviceRadiusMeters': serviceRadiusMeters,
           'beneficiaryCapacity': beneficiaryCapacity,
+          if (contactPerson != null) 'contactPerson': contactPerson,
+          if (description != null) 'description': description,
+          if (photos != null) 'photos': photos,
+          if (fullName != null) 'fullName': fullName,
+          if (phone != null) 'phone': phone,
         },
       );
       await fetchReceiverProfileRemote();

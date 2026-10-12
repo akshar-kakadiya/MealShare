@@ -25,5 +25,11 @@ public record DonorProfileRequest(
         @DecimalMax(value = "180.0", message = "Longitude must be between -180 and 180")
         Double longitude,
 
-        Boolean policyAccepted
+        Boolean policyAccepted,
+        String contactPerson,
+        String businessType,
+        String eventInfo,
+        String photos,
+        String fullName,
+        String phone
 ) {}
