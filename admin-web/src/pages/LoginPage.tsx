@@ -1,11 +1,11 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Leaf, Lock, Mail, AlertCircle, Loader2 } from 'lucide-react';
+import { Leaf, Lock, Mail, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { signIn, authError, mealshareUser, refreshProfile } = useAuth();
+  const { signIn, authError, mealshareUser, firebaseUser, refreshProfile, connectionStatus } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,6 +34,10 @@ export default function LoginPage() {
       setSubmitting(false);
     }
   };
+
+  const isWakingUpError =
+    (errorMessage && (errorMessage.includes('waking up') || errorMessage.includes('unavailable') || errorMessage.includes('timed out'))) ||
+    (authError && (authError.includes('waking up') || authError.includes('unavailable') || authError.includes('timed out')));
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -78,16 +82,36 @@ export default function LoginPage() {
                 <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <span className="text-xs sm:text-sm">{errorMessage || authError}</span>
-                  {authError && authError.includes('timed out') && (
+                  {(isWakingUpError || firebaseUser) && !submitting && (
                     <button
                       type="button"
-                      onClick={() => refreshProfile()}
-                      className="block mt-1 text-xs font-semibold text-primary-700 underline hover:text-primary-800"
+                      onClick={async () => {
+                        setErrorMessage(null);
+                        setSubmitting(true);
+                        try {
+                          const user = await refreshProfile();
+                          if (user && user.role === 'ADMIN') {
+                            navigate('/admin', { replace: true });
+                          }
+                        } catch (err: any) {
+                          setErrorMessage(err.message || 'Verification failed. Please retry.');
+                        } finally {
+                          setSubmitting(false);
+                        }
+                      }}
+                      className="block mt-1.5 text-xs font-semibold text-primary-700 underline hover:text-primary-800 cursor-pointer"
                     >
                       Retry Verification
                     </button>
                   )}
                 </div>
+              </div>
+            )}
+
+            {submitting && connectionStatus && connectionStatus.attempt > 1 && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 text-amber-600 animate-spin flex-shrink-0" />
+                <span>{connectionStatus.message}</span>
               </div>
             )}
 
@@ -134,7 +158,11 @@ export default function LoginPage() {
                 {submitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Signing in...</span>
+                    <span>
+                      {connectionStatus?.attempt && connectionStatus.attempt > 1
+                        ? `Connecting (attempt ${connectionStatus.attempt})...`
+                        : 'Verifying credentials...'}
+                    </span>
                   </>
                 ) : (
                   <span>Sign in to Dashboard</span>

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/api_config.dart';
 import '../mock/app_state.dart';
+import '../shared/utils/date_formatter.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
 import '../shared/widgets/status_chip.dart';
@@ -28,6 +29,13 @@ class ReceiverDonationDetailsScreen extends StatelessWidget {
     final myRequest = ApiConfig.isRealMode
         ? state.requests.where((r) => r.donationId == id).firstOrNull
         : state.requests.where((r) => r.donationId == id && r.receiverId == state.currentUser.id).firstOrNull;
+
+    final pickupUntil = donation.pickupAvailableUntil ?? DateTime.tryParse(donation.pickupWindowEnd);
+    final consumeBefore = donation.consumeBeforeTime ?? DateTime.tryParse(donation.consumeBefore);
+    final now = DateTime.now();
+    final isExpired = donation.status == 'EXPIRED' ||
+        (pickupUntil != null && pickupUntil.isBefore(now)) ||
+        (consumeBefore != null && consumeBefore.isBefore(now));
 
     return Scaffold(
       appBar: AppBar(
@@ -70,7 +78,30 @@ class ReceiverDonationDetailsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
-          Center(child: StatusChip(status: hasRequested ? (myRequest?.status ?? donation.status) : donation.status)),
+          Center(child: StatusChip(status: isExpired && !hasRequested ? 'EXPIRED' : (hasRequested ? (myRequest?.status ?? donation.status) : donation.status))),
+          if (isExpired && !hasRequested) ...[
+            const SizedBox(height: AppSpacing.md),
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.timer_off_outlined, color: Colors.red.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Donation Expired — The pickup availability window has elapsed. This food can no longer be requested.',
+                      style: TextStyle(color: Colors.red.shade800, fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.xxl),
 
           // About This Food
@@ -89,7 +120,7 @@ class ReceiverDonationDetailsScreen extends StatelessWidget {
             title: 'Food Safety Information',
             icon: Icons.health_and_safety,
             children: [
-              _InfoRow('Consume Before', donation.consumeBefore),
+              _InfoRow('Consume Before', AppDateFormatter.formatConsumeBefore(donation.consumeBeforeTime ?? donation.consumeBefore)),
               _InfoRow('Storage', donation.storageCondition),
               _InfoRow('Packaging', donation.packagingCondition),
               if (donation.hasAllergens)
@@ -131,7 +162,17 @@ class ReceiverDonationDetailsScreen extends StatelessWidget {
             icon: Icons.location_on,
             children: [
               if (donation.pickupAddress.isNotEmpty) _InfoRow('Address', donation.pickupAddress),
-              if (donation.pickupWindowStart.isNotEmpty) _InfoRow('Pickup Window', '${donation.pickupWindowStart} - ${donation.pickupWindowEnd}'),
+              _InfoRow(
+                'Pickup Date',
+                AppDateFormatter.formatDate(donation.pickupAvailableFrom ?? donation.pickupWindowStart),
+              ),
+              _InfoRow(
+                'Pickup Time',
+                AppDateFormatter.formatPickupTimeRange(
+                  donation.pickupAvailableFrom ?? donation.pickupWindowStart,
+                  donation.pickupAvailableUntil ?? donation.pickupWindowEnd,
+                ),
+              ),
               if (donation.pickupInstructions.isNotEmpty) _InfoRow('Instructions', donation.pickupInstructions),
             ],
           ),
@@ -143,7 +184,27 @@ class ReceiverDonationDetailsScreen extends StatelessWidget {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.lg),
-          child: hasRequested
+          child: (isExpired && !hasRequested)
+              ? Container(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.timer_off_outlined, color: Colors.grey.shade600),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Donation Expired — Unavailable',
+                        style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                )
+              : hasRequested
               ? Container(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   decoration: BoxDecoration(
@@ -163,7 +224,7 @@ class ReceiverDonationDetailsScreen extends StatelessWidget {
                   ),
                 )
               : ElevatedButton(
-                  onPressed: donation.status == 'AVAILABLE'
+                  onPressed: (donation.status == 'AVAILABLE' && !isExpired)
                       ? () {
                           final qtyCtrl = TextEditingController(text: donation.quantity.toString());
                           final notesCtrl = TextEditingController();

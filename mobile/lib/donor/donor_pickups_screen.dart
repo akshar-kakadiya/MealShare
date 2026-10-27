@@ -1,13 +1,19 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import '../mock/app_state.dart';
+import '../shared/utils/date_formatter.dart';
 import '../shared/api_client.dart';
 import '../config/api_config.dart';
 import '../theme/app_colors.dart';
 import '../shared/widgets/status_chip.dart';
 import '../shared/widgets/empty_state.dart';
 import '../shared/widgets/rating_dialog.dart';
+import '../shared/widgets/donation_tracking_map.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../shared/utils/polyline_decoder.dart';
+import '../tracking/pickup_live_tracking_service.dart';
 
 class DonorPickupsScreen extends StatefulWidget {
   const DonorPickupsScreen({super.key});
@@ -162,74 +168,19 @@ class _DonorPickupsScreenState extends State<DonorPickupsScreen> {
     );
   }
 
-  Future<void> _viewTrackingDialog(String pickupId, String receiverName) async {
-    showDialog(
+  Future<void> _showTrackingModal(String pickupId, String receiverName, {String phase = 'APPROACH'}) async {
+    showModalBottomSheet(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.navigation, color: Colors.blue),
-            SizedBox(width: 8),
-            Text('Live Approach Tracking'),
-          ],
-        ),
-        content: FutureBuilder<Map<String, dynamic>>(
-          future: context.read<ApiClient>().get(ApiConfig.donorTrackingUrl(pickupId)).then((r) => r is Map<String, dynamic> ? r : {}),
-          builder: (ctx, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const SizedBox(
-                height: 100,
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            final data = snapshot.data ?? {};
-            final dist = (data['distanceToTargetMeters'] ?? data['distanceMeters']) as num?;
-            final arrived = data['receiverArrived'] == true || data['status'] == 'AT_PICKUP';
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('$receiverName is currently en route.', style: const TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.directions_car, color: Colors.blue),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          arrived
-                              ? 'Receiver has arrived at your location!'
-                              : (dist != null
-                                  ? 'Distance to you: ${dist.toInt()} meters'
-                                  : 'Tracking active. Approaching your premises.'),
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'When receiver arrives and inspects the food, share your 6-digit Handover OTP with them to complete custody transfer.',
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                ),
-              ],
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('Close'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => _TrackingBottomSheet(
+        pickupId: pickupId,
+        receiverName: receiverName,
+        phase: phase,
+        onViewOtp: () {
+          Navigator.pop(sheetCtx);
+          _viewOtpDialog(pickupId, receiverName);
+        },
       ),
     );
   }
@@ -365,13 +316,7 @@ class _DonorPickupsScreenState extends State<DonorPickupsScreen> {
     final inspectionRejected = p['inspectionRejected'] == true;
     final inspectionNotes = p['inspectionNotes']?.toString() ?? '';
 
-    String scheduledStr = 'Scheduled';
-    if (p['scheduledAt'] != null) {
-      final dt = DateTime.tryParse(p['scheduledAt'].toString());
-      if (dt != null) {
-        scheduledStr = DateFormat('MMM d, h:mm a').format(dt.toLocal());
-      }
-    }
+    final scheduledStr = AppDateFormatter.formatDateTime(p['scheduledAt'], fallback: 'Scheduled');
 
     final ratingStatus = _pickupRatingStatuses[pickupId];
     final bool isCompleted = status == 'COMPLETED';
@@ -496,7 +441,7 @@ class _DonorPickupsScreenState extends State<DonorPickupsScreen> {
                       ),
                     ),
                     FilledButton.tonal(
-                      onPressed: () => _viewTrackingDialog(pickupId, receiverName),
+                      onPressed: () => _showTrackingModal(pickupId, receiverName, phase: 'APPROACH'),
                       style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
                       child: const Text('Track Approach'),
                     ),
@@ -602,6 +547,49 @@ class _DonorPickupsScreenState extends State<DonorPickupsScreen> {
                   ),
                 ),
               ],
+            ] else if (status == 'PICKED_UP') ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.inventory_2_outlined, color: Colors.blue, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Food custody transferred. Awaiting receiver departure to distribution destination.',
+                        style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else if (status == 'IN_TRANSIT') ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.local_shipping, color: Colors.blue, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Donation collected. Receiver is distributing food to beneficiaries.',
+                        style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ] else if (status == 'CANCELLED') ...[
               Container(
                 width: double.infinity,
@@ -669,6 +657,346 @@ class _DonorPickupsScreenState extends State<DonorPickupsScreen> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TrackingBottomSheet extends StatefulWidget {
+  final String pickupId;
+  final String receiverName;
+  final String phase;
+  final VoidCallback onViewOtp;
+
+  const _TrackingBottomSheet({
+    required this.pickupId,
+    required this.receiverName,
+    required this.phase,
+    required this.onViewOtp,
+  });
+
+  @override
+  State<_TrackingBottomSheet> createState() => _TrackingBottomSheetState();
+}
+
+class _TrackingBottomSheetState extends State<_TrackingBottomSheet> {
+  Map<String, dynamic>? _trackingData;
+  bool _loading = true;
+  String? _error;
+  Timer? _fallbackTimer;
+  StreamSubscription<TrackingSessionSnapshot?>? _rtdbSubscription;
+  List<LatLng>? _roadRoutePoints;
+  String? _roadDistance;
+  String? _roadDuration;
+  double? _lastRouteOriginLat;
+  double? _lastRouteOriginLng;
+  DateTime? _lastRouteCalculatedAt;
+  bool _fetchingRoute = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchTracking();
+    _fetchRoadRoute();
+    _subscribeToLiveTracking();
+    // Low-frequency fallback (25s) for backend sync
+    _fallbackTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+      _fetchTracking(silent: true);
+    });
+  }
+
+  void _subscribeToLiveTracking() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        final trackingService = context.read<PickupLiveTrackingService?>();
+        if (trackingService != null) {
+          _rtdbSubscription = trackingService.watchPickupSession(widget.pickupId).listen((snapshot) {
+            if (!mounted || snapshot == null) return;
+            final recLoc = snapshot.receiverLocation;
+            setState(() {
+              _trackingData = {
+                ...?_trackingData,
+                'pickupId': snapshot.pickupId,
+                'status': snapshot.status,
+                'trackingActive': snapshot.trackingActive,
+                if (recLoc != null) ...{
+                  'currentLatitude': recLoc.latitude,
+                  'currentLongitude': recLoc.longitude,
+                  'speed': recLoc.speed,
+                  'heading': recLoc.heading,
+                  'locationUpdatedAt': recLoc.timestamp.toIso8601String(),
+                },
+                if (snapshot.donorLatitude != null) 'donorLatitude': snapshot.donorLatitude,
+                if (snapshot.donorLongitude != null) 'donorLongitude': snapshot.donorLongitude,
+                if (snapshot.donorAddress != null) 'pickupAddress': snapshot.donorAddress,
+                if (snapshot.donorName != null) 'donorName': snapshot.donorName,
+              };
+              _loading = false;
+            });
+            if (recLoc != null) {
+              final now = DateTime.now();
+              final secondsSince = _lastRouteCalculatedAt == null ? 999 : now.difference(_lastRouteCalculatedAt!).inSeconds;
+              bool shouldRecalculate = false;
+              if (_lastRouteOriginLat == null || _lastRouteOriginLng == null) {
+                shouldRecalculate = true;
+              } else {
+                final devMeters = Geolocator.distanceBetween(
+                  _lastRouteOriginLat!,
+                  _lastRouteOriginLng!,
+                  recLoc.latitude,
+                  recLoc.longitude,
+                );
+                if (devMeters > 100.0 && secondsSince >= 25) {
+                  shouldRecalculate = true;
+                } else if (secondsSince >= 60) {
+                  shouldRecalculate = true;
+                }
+              }
+              if (shouldRecalculate) {
+                _fetchRoadRoute(lat: recLoc.latitude, lng: recLoc.longitude);
+              }
+            }
+          });
+        }
+      } catch (e) {
+        debugPrint('[DonorTracking] RTDB subscription error: $e');
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _rtdbSubscription?.cancel();
+    _fallbackTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchTracking({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      final client = context.read<ApiClient>();
+      final res = await client.get(ApiConfig.donorTrackingUrl(widget.pickupId));
+      if (mounted && res is Map<String, dynamic>) {
+        setState(() {
+          _trackingData = res;
+          _loading = false;
+        });
+        if (_roadRoutePoints == null) {
+          _fetchRoadRoute(
+            lat: (_trackingData?['currentLatitude'] as num?)?.toDouble(),
+            lng: (_trackingData?['currentLongitude'] as num?)?.toDouble(),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted && !silent) {
+        setState(() {
+          _error = 'Failed to load tracking data: $e';
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _fetchRoadRoute({double? lat, double? lng}) async {
+    if (_fetchingRoute || !mounted) return;
+    _fetchingRoute = true;
+    try {
+      final client = context.read<ApiClient>();
+      String url = ApiConfig.donorPickupRouteUrl(widget.pickupId);
+      if (lat != null && lng != null) {
+        url += '?lat=$lat&lng=$lng';
+      }
+      final res = await client.get(url);
+      if (mounted && res is Map<String, dynamic> && res['available'] == true) {
+        final encoded = res['encodedPolyline']?.toString() ?? '';
+        final points = decodePolyline(encoded);
+        setState(() {
+          _roadRoutePoints = points;
+          _roadDistance = res['formattedDistance']?.toString();
+          _roadDuration = res['formattedDuration']?.toString();
+          _lastRouteOriginLat = lat ?? (res['originLatitude'] as num?)?.toDouble();
+          _lastRouteOriginLng = lng ?? (res['originLongitude'] as num?)?.toDouble();
+          _lastRouteCalculatedAt = DateTime.now();
+        });
+      }
+    } catch (e) {
+      debugPrint('[DonorTracking] Route calculation error: $e');
+    } finally {
+      _fetchingRoute = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDelivery = widget.phase == 'DELIVERY' || _trackingData?['phase'] == 'DELIVERY';
+    final dist = (_trackingData?['distanceToTargetMeters'] ?? _trackingData?['distanceMeters']) as num?;
+    final withinGeofence = _trackingData?['withinGeofence'] == true || (dist != null && dist <= 200);
+    final status = (_trackingData?['status'] ?? '').toString().toUpperCase();
+    final arrived = withinGeofence || status == 'AT_PICKUP';
+
+    DateTime? lastUpdated;
+    if (_trackingData?['locationUpdatedAt'] != null) {
+      lastUpdated = DateTime.tryParse(_trackingData!['locationUpdatedAt'].toString())?.toLocal();
+    }
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Icon(
+                  isDelivery ? Icons.local_shipping : Icons.navigation,
+                  color: isDelivery ? Colors.blue.shade700 : AppColors.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isDelivery ? 'Live Delivery Tracking (Journey B)' : 'Live Approach Tracking (Journey A)',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      Text(
+                        isDelivery
+                            ? 'Receiver en route to distribution destination'
+                            : '${widget.receiverName} approaching your pickup location',
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 16),
+          Expanded(
+            child: _loading && _trackingData == null
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null && _trackingData == null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline, size: 40, color: AppColors.error),
+                            const SizedBox(height: 8),
+                            Text(_error!, style: const TextStyle(color: AppColors.textSecondary)),
+                            const SizedBox(height: 12),
+                            FilledButton(onPressed: () => _fetchTracking(), child: const Text('Retry')),
+                          ],
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: arrived ? Colors.green.shade50 : Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: arrived ? Colors.green.shade300 : Colors.blue.shade200,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    arrived ? Icons.check_circle : Icons.near_me,
+                                    color: arrived ? Colors.green : Colors.blue,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      arrived
+                                          ? 'Receiver is within 200m pickup geofence / arrived!'
+                                          : (dist != null
+                                              ? 'Receiver is ${dist.toInt()}m away from pickup point'
+                                              : 'Live GPS active. Tracking vehicle approach.'),
+                                      style: TextStyle(
+                                        color: arrived ? Colors.green.shade800 : Colors.blue.shade900,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                  if (arrived && !isDelivery) ...[
+                                    const SizedBox(width: 8),
+                                    FilledButton(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: AppColors.primary,
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                      onPressed: widget.onViewOtp,
+                                      child: const Text('View OTP'),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: ClipRRect(
+                              child: DonationTrackingMap(
+                                receiverLatitude: (_trackingData?['currentLatitude'] as num?)?.toDouble(),
+                                receiverLongitude: (_trackingData?['currentLongitude'] as num?)?.toDouble(),
+                                donorLatitude: (_trackingData?['donorLatitude'] as num?)?.toDouble(),
+                                donorLongitude: (_trackingData?['donorLongitude'] as num?)?.toDouble(),
+                                donorLabel: _trackingData?['donorName']?.toString() ?? 'Pickup Point',
+                                destinationLatitude: (_trackingData?['destinationLatitude'] as num?)?.toDouble(),
+                                destinationLongitude: (_trackingData?['destinationLongitude'] as num?)?.toDouble(),
+                                destinationLabel: _trackingData?['receiverOrgName']?.toString() ?? 'Delivery Destination',
+                                phase: _trackingData?['phase']?.toString() ?? widget.phase,
+                                distanceMeters: dist?.toDouble(),
+                                lastUpdated: lastUpdated,
+                                isReceiver: false,
+                                roadRoutePoints: _roadRoutePoints,
+                                roadDistance: _roadDistance,
+                                roadDuration: _roadDuration,
+                                onRefresh: () {
+                                  _fetchTracking();
+                                  _fetchRoadRoute(
+                                    lat: (_trackingData?['currentLatitude'] as num?)?.toDouble(),
+                                    lng: (_trackingData?['currentLongitude'] as num?)?.toDouble(),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+          ),
+        ],
       ),
     );
   }

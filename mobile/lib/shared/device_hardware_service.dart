@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:mealshare_mobile/config/api_config.dart';
 import 'package:mealshare_mobile/shared/api_client.dart';
 
@@ -38,6 +39,55 @@ class DeviceHardwareService {
     } catch (e) {
       debugPrint('Geolocator error: $e');
       return null;
+    }
+  }
+
+  /// Launch external turn-by-turn navigation (Google Maps) to destination coordinates.
+  /// Accepts optional origin coordinates (from receiver GPS) and ensures valid donor destination.
+  static Future<bool> openTurnByTurnNavigation({
+    required double latitude,
+    required double longitude,
+    double? originLatitude,
+    double? originLongitude,
+    String? destinationLabel,
+  }) async {
+    // Validate destination coordinates
+    if (latitude < -90.0 || latitude > 90.0 || longitude < -180.0 || longitude > 180.0 || (latitude == 0.0 && longitude == 0.0)) {
+      debugPrint('Invalid navigation coordinates: lat=$latitude, lon=$longitude');
+      return false;
+    }
+
+    try {
+      // 1. Google Maps Navigation scheme (standard on Android devices)
+      final googleMapsNavUri = Uri.parse('google.navigation:q=$latitude,$longitude&mode=d');
+      if (await canLaunchUrl(googleMapsNavUri)) {
+        return await launchUrl(googleMapsNavUri, mode: LaunchMode.externalApplication);
+      }
+
+      // 2. Official Google Maps Directions Web/App URL
+      final originQuery = (originLatitude != null && originLongitude != null)
+          ? '&origin=$originLatitude,$originLongitude'
+          : '';
+      final labelQuery = destinationLabel != null ? '&destination_place_id=${Uri.encodeComponent(destinationLabel)}' : '';
+      final mapsWebUri = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude$originQuery$labelQuery&travelmode=driving',
+      );
+      if (await canLaunchUrl(mapsWebUri)) {
+        return await launchUrl(mapsWebUri, mode: LaunchMode.externalApplication);
+      }
+
+      // 3. Fallback Geo URI scheme
+      final geoUri = Uri.parse(
+        'geo:$latitude,$longitude?q=$latitude,$longitude(${Uri.encodeComponent(destinationLabel ?? "Pickup Destination")})',
+      );
+      if (await canLaunchUrl(geoUri)) {
+        return await launchUrl(geoUri, mode: LaunchMode.externalApplication);
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('Error launching turn-by-turn navigation: $e');
+      return false;
     }
   }
 

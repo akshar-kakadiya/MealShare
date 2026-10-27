@@ -1,0 +1,39 @@
+{
+  "rules": {
+    "active_tracking": {
+      "$pickupId": {
+        ".read": "auth != null && (data.child('donorUid').val() === auth.uid || data.child('receiverUid').val() === auth.uid || auth.token.role === 'ADMIN')",
+        ".write": false,
+
+        "receiverLocation": {
+          ".write": "auth != null && data.parent().child('receiverUid').val() === auth.uid && data.parent().child('trackingActive').val() === true && data.parent().child('status').val() === 'EN_ROUTE_TO_PICKUP'",
+          ".validate": "newData.hasChildren(['latitude', 'longitude', 'timestamp']) && newData.child('latitude').isNumber() && newData.child('latitude').val() >= -90.0 && newData.child('latitude').val() <= 90.0 && newData.child('longitude').isNumber() && newData.child('longitude').val() >= -180.0 && newData.child('longitude').val() <= 180.0 && newData.child('timestamp').isNumber() && (!newData.hasChild('speed') || newData.child('speed').isNumber()) && (!newData.hasChild('heading') || (newData.child('heading').isNumber() && newData.child('heading').val() >= 0 && newData.child('heading').val() <= 360))"
+        },
+
+        "route": {
+          ".write": "auth != null && data.parent().child('receiverUid').val() === auth.uid && data.parent().child('trackingActive').val() === true && data.parent().child('status').val() === 'EN_ROUTE_TO_PICKUP'",
+          ".validate": "newData.hasChildren(['distanceMeters', 'durationSeconds'])"
+        },
+
+        "donorUid": {
+          ".write": false
+        },
+        "receiverUid": {
+          ".write": false
+        },
+        "pickupId": {
+          ".write": false
+        },
+        "status": {
+          ".write": false
+        },
+        "trackingActive": {
+          ".write": false
+        },
+        "donorLocation": {
+          ".write": false
+        }
+      }
+    }
+  }
+}

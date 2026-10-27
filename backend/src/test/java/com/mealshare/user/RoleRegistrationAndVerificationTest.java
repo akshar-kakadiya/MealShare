@@ -90,7 +90,7 @@ class RoleRegistrationAndVerificationTest {
         assertEquals("HOTEL_RESTAURANT", res.category());
         assertEquals("INCOMPLETE", res.profileStatus());
         assertEquals("PENDING", res.verificationStatus());
-        assertEquals(UserStatus.ACTIVE, res.status());
+        assertEquals(UserStatus.PENDING_VERIFICATION, res.status());
         verify(donorProfileRepository).save(any(DonorProfile.class));
     }
 
@@ -121,6 +121,7 @@ class RoleRegistrationAndVerificationTest {
         assertEquals("COMMUNITY_SHELTER", res.category());
         assertEquals("INCOMPLETE", res.profileStatus());
         assertEquals("PENDING", res.verificationStatus());
+        assertEquals(UserStatus.PENDING_VERIFICATION, res.status());
         verify(receiverOrganizationRepository).save(any(ReceiverOrganization.class));
     }
 
@@ -267,12 +268,14 @@ class RoleRegistrationAndVerificationTest {
         User u = new User();
         u.setId(UUID.randomUUID());
         u.setStatus(UserStatus.ACTIVE);
+        u.setProfileStatus(ProfileStatus.COMPLETE);
         u.setVerificationStatus(VerificationStatus.PENDING);
 
         DonorProfile dp = new DonorProfile();
         dp.setId(donorId);
         dp.setEntityName("Grand Palace Hotel");
         dp.setDonorType("HOTEL_RESTAURANT");
+        dp.setProfileStatus(ProfileStatus.COMPLETE);
         dp.setVerificationStatus(VerificationStatus.PENDING);
         dp.setUser(u);
 
@@ -288,7 +291,96 @@ class RoleRegistrationAndVerificationTest {
         assertEquals("DONOR", res.role());
         assertEquals(UserStatus.ACTIVE, u.getStatus());
         assertEquals(VerificationStatus.APPROVED, u.getVerificationStatus());
+        assertNull(dp.getRejectionReason());
+        assertNull(dp.getActionRequiredNotes());
         verify(auditService).logEvent(eq("admin-uid"), eq("ADMIN"), eq("ORGANIZATION_VERIFICATION_ADJUDICATED"), eq("DonorProfile"), eq(donorId.toString()), any(), any());
+    }
+
+    @Test
+    @DisplayName("Admin approval fails with IllegalStateException when profile is INCOMPLETE")
+    void testAdminCannotApproveIncompleteProfile() {
+        UUID donorId = UUID.randomUUID();
+        User u = new User();
+        u.setId(UUID.randomUUID());
+        u.setStatus(UserStatus.PENDING_VERIFICATION);
+        u.setProfileStatus(ProfileStatus.INCOMPLETE);
+        u.setVerificationStatus(VerificationStatus.PENDING);
+
+        DonorProfile dp = new DonorProfile();
+        dp.setId(donorId);
+        dp.setEntityName("Incomplete Eatery");
+        dp.setDonorType("HOTEL_RESTAURANT");
+        dp.setProfileStatus(ProfileStatus.INCOMPLETE);
+        dp.setVerificationStatus(VerificationStatus.PENDING);
+        dp.setUser(u);
+
+        when(donorProfileRepository.findById(donorId)).thenReturn(Optional.of(dp));
+
+        UpdateVerificationStatusRequest req = new UpdateVerificationStatusRequest("APPROVED", "Verified");
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                adminVerificationService.updateVerificationStatus(donorId, req, "admin-uid", null)
+        );
+        assertTrue(ex.getMessage().contains("profile is incomplete"));
+    }
+
+    @Test
+    @DisplayName("Admin rejection fails with IllegalArgumentException when rejection reason is missing")
+    void testAdminCannotRejectWithoutReason() {
+        UUID donorId = UUID.randomUUID();
+        UpdateVerificationStatusRequest req = new UpdateVerificationStatusRequest("REJECTED", null, "", null);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                adminVerificationService.updateVerificationStatus(donorId, req, "admin-uid", null)
+        );
+        assertTrue(ex.getMessage().contains("rejection reason is required"));
+    }
+
+    @Test
+    @DisplayName("Admin action-required fails with IllegalArgumentException when notes are missing")
+    void testAdminCannotRequestActionWithoutNotes() {
+        UUID donorId = UUID.randomUUID();
+        UpdateVerificationStatusRequest req = new UpdateVerificationStatusRequest("ACTION_REQUIRED", null, null, "   ");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                adminVerificationService.updateVerificationStatus(donorId, req, "admin-uid", null)
+        );
+        assertTrue(ex.getMessage().contains("Action required notes"));
+    }
+
+    @Test
+    @DisplayName("Admin adjudicates rejection and restricts user status")
+    void testAdminAdjudicatesRejection() {
+        UUID donorId = UUID.randomUUID();
+        User u = new User();
+        u.setId(UUID.randomUUID());
+        u.setStatus(UserStatus.ACTIVE);
+        u.setVerificationStatus(VerificationStatus.PENDING);
+
+        DonorProfile dp = new DonorProfile();
+        dp.setId(donorId);
+        dp.setEntityName("Fake Restaurant");
+        dp.setDonorType("HOTEL_RESTAURANT");
+        dp.setVerificationStatus(VerificationStatus.PENDING);
+        dp.setUser(u);
+
+        when(donorProfileRepository.findById(donorId)).thenReturn(Optional.of(dp));
+        when(donorProfileRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateVerificationStatusRequest req = new UpdateVerificationStatusRequest(
+                "REJECTED",
+                "Invalid documentation",
+                "Invalid documentation",
+                null
+        );
+
+        AdminVerificationResponse res = adminVerificationService.updateVerificationStatus(donorId, req, "admin-uid", null);
+
+        assertEquals("REJECTED", res.status());
+        assertEquals("Invalid documentation", res.rejectionReason());
+        assertEquals(UserStatus.RESTRICTED, u.getStatus());
+        assertEquals(VerificationStatus.REJECTED, u.getVerificationStatus());
+        assertEquals("Invalid documentation", u.getRejectionReason());
     }
 
     @Test

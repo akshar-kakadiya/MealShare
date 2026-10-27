@@ -24,6 +24,8 @@ import com.mealshare.pickup.PickupStatus;
 import com.mealshare.pickup.dto.AdminAssignPickupResponse;
 import com.mealshare.pickup.dto.AssignPickupRequest;
 import com.mealshare.pickup.dto.DonorPickupOtpResponse;
+import com.mealshare.pickup.dto.FoodInspectionDto;
+import com.mealshare.pickup.dto.LocationUpdateDto;
 import com.mealshare.pickup.dto.PickupResponse;
 import com.mealshare.receiver.ReceiverDiscoveryService;
 import com.mealshare.receiver.ReceiverOrganization;
@@ -297,6 +299,10 @@ public class DockerPostgresE2ETest {
             assertNotNull(response.pickupId());
             createdPickupId = response.pickupId();
         }
+        // Receiver arrives at pickup location and accepts food safety inspection
+        pickupService.confirmReachedLocation(RECEIVER_UID, createdPickupId, new LocationUpdateDto(12.9716, 77.5946, 0.0, 0.0), request);
+        pickupService.inspectFood(RECEIVER_UID, createdPickupId, new FoodInspectionDto(true, "Food inspected and fresh", null, null), request);
+
         // Legitimate production workflow: Authorized donor retrieves handover OTP
         DonorPickupOtpResponse donorOtp = pickupService.getOtpForDonor(DONOR_UID, createdPickupId, request);
         assertNotNull(donorOtp);
@@ -305,7 +311,7 @@ public class DockerPostgresE2ETest {
 
         // Verify database persistence and OTP security invariant
         Pickup dbPickup = pickupRepository.findById(createdPickupId).orElseThrow();
-        assertEquals(PickupStatus.ASSIGNED, dbPickup.getStatus());
+        assertEquals(PickupStatus.AT_PICKUP, dbPickup.getStatus());
         assertNotNull(dbPickup.getOtpHash());
         assertNotEquals(generatedDevOtp, dbPickup.getOtpHash(), "Plaintext OTP must NOT be stored in database");
         assertTrue(dbPickup.getOtpHash().length() >= 60, "OTP hash must be at least 60 chars (BCrypt / secure hash)");
@@ -442,6 +448,8 @@ public class DockerPostgresE2ETest {
             u.setStatus(UserStatus.SUSPENDED);
             return userRepository.save(u);
         });
+        suspendedDonor.setStatus(UserStatus.SUSPENDED);
+        userRepository.save(suspendedDonor);
 
         assertThrows(AccessDeniedException.class, () -> {
             donationService.createDonation("suspended_donor_uid", new CreateDonationRequest(

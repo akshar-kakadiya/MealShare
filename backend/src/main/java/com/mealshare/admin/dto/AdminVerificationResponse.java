@@ -80,7 +80,18 @@ public record AdminVerificationResponse(
     }
 
     public static AdminVerificationResponse fromEntity(ReceiverOrganization org) {
-        var user = org.getUser();
+        return fromEntity(org, null);
+    }
+
+    public static AdminVerificationResponse fromEntity(ReceiverOrganization org, com.mealshare.user.User userOverride) {
+        var user = userOverride != null ? userOverride : org.getUser();
+        String status = user != null && user.getVerificationStatus() != null
+                ? user.getVerificationStatus().name()
+                : ("VERIFIED".equalsIgnoreCase(org.getVerificationStatus()) ? "APPROVED" : (org.getVerificationStatus() != null ? org.getVerificationStatus() : "PENDING"));
+        String profileStatus = org.getProfileStatus() != null
+                ? org.getProfileStatus().name()
+                : (user != null && user.getProfileStatus() != null ? user.getProfileStatus().name() : "INCOMPLETE");
+
         return new AdminVerificationResponse(
                 org.getId(),
                 user != null ? user.getId() : null,
@@ -100,19 +111,30 @@ public record AdminVerificationResponse(
                 null,
                 null,
                 org.getPhotos(),
-                org.getProfileStatus() != null ? org.getProfileStatus().name() : "INCOMPLETE",
-                org.getVerificationStatus(),
-                org.getRejectionReason(),
-                org.getActionRequiredNotes(),
+                profileStatus,
+                status,
+                org.getRejectionReason() != null ? org.getRejectionReason() : (user != null ? user.getRejectionReason() : null),
+                org.getActionRequiredNotes() != null ? org.getActionRequiredNotes() : (user != null ? user.getActionRequiredNotes() : null),
                 org.getCreatedAt(),
-                org.getVerifiedAt(),
-                org.getVerifiedBy(),
+                org.getVerifiedAt() != null ? org.getVerifiedAt() : (user != null ? user.getVerifiedAt() : null),
+                org.getVerifiedBy() != null ? org.getVerifiedBy() : (user != null ? user.getVerifiedBy() : null),
                 org.getActionRequiredNotes() != null ? org.getActionRequiredNotes() : org.getRejectionReason()
         );
     }
 
     public static AdminVerificationResponse fromEntity(DonorProfile donor) {
-        var user = donor.getUser();
+        return fromEntity(donor, null);
+    }
+
+    public static AdminVerificationResponse fromEntity(DonorProfile donor, com.mealshare.user.User userOverride) {
+        var user = userOverride != null ? userOverride : donor.getUser();
+        String status = user != null && user.getVerificationStatus() != null
+                ? user.getVerificationStatus().name()
+                : (donor.getVerificationStatus() != null ? donor.getVerificationStatus().name() : "PENDING");
+        String profileStatus = donor.getProfileStatus() != null
+                ? donor.getProfileStatus().name()
+                : (user != null && user.getProfileStatus() != null ? user.getProfileStatus().name() : "INCOMPLETE");
+
         return new AdminVerificationResponse(
                 donor.getId(),
                 user != null ? user.getId() : null,
@@ -132,13 +154,13 @@ public record AdminVerificationResponse(
                 donor.getBusinessType(),
                 donor.getEventInfo(),
                 donor.getPhotos(),
-                donor.getProfileStatus() != null ? donor.getProfileStatus().name() : "INCOMPLETE",
-                donor.getVerificationStatus() != null ? donor.getVerificationStatus().name() : "PENDING",
-                donor.getRejectionReason(),
-                donor.getActionRequiredNotes(),
+                profileStatus,
+                status,
+                donor.getRejectionReason() != null ? donor.getRejectionReason() : (user != null ? user.getRejectionReason() : null),
+                donor.getActionRequiredNotes() != null ? donor.getActionRequiredNotes() : (user != null ? user.getActionRequiredNotes() : null),
                 donor.getCreatedAt(),
-                donor.getVerifiedAt(),
-                donor.getVerifiedBy(),
+                donor.getVerifiedAt() != null ? donor.getVerifiedAt() : (user != null ? user.getVerifiedAt() : null),
+                donor.getVerifiedBy() != null ? donor.getVerifiedBy() : (user != null ? user.getVerifiedBy() : null),
                 donor.getActionRequiredNotes() != null ? donor.getActionRequiredNotes() : donor.getRejectionReason()
         );
     }

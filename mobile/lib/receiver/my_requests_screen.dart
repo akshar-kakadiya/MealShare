@@ -47,7 +47,7 @@ class _ReceiverMyRequestsScreenState extends State<ReceiverMyRequestsScreen> {
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              children: ['All', 'Pending', 'Approved', 'Completed'].map((f) {
+              children: ['All', 'Pending', 'Approved', 'Completed', 'Expired'].map((f) {
                 final isSelected = _filter == f;
                 return Padding(
                   padding: const EdgeInsets.only(right: AppSpacing.sm),

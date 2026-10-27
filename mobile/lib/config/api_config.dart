@@ -24,6 +24,13 @@ class ApiConfig {
   /// Default cloud backend URL deployed on Render
   static const String defaultCloudUrl = 'https://mealshare-backend.onrender.com';
 
+  /// Firebase Realtime Database URL for live tracking sessions
+  static const String defaultFirebaseDatabaseUrl = 'https://mealshare-100-default-rtdb.firebaseio.com';
+  static const String firebaseDatabaseUrl = String.fromEnvironment(
+    'FIREBASE_DATABASE_URL',
+    defaultValue: defaultFirebaseDatabaseUrl,
+  );
+
   /// Automatically resolves base URL depending on platform and environment flags:
   /// 1. Runtime override: [setBaseUrl] (highest priority)
   /// 2. Explicit environment define: `BACKEND_URL` (e.g. `--dart-define=BACKEND_URL=https://...`)
@@ -48,6 +55,10 @@ class ApiConfig {
       if (kIsWeb) {
         return 'http://localhost:$port';
       }
+      const useAdbReverse = bool.fromEnvironment('USE_ADB_REVERSE', defaultValue: false);
+      if (useAdbReverse) {
+        return 'http://127.0.0.1:$port';
+      }
       if (defaultTargetPlatform == TargetPlatform.android) {
         return 'http://10.0.2.2:$port';
       }
@@ -70,10 +81,13 @@ class ApiConfig {
   static String donorRequestsForDonationUrl(String donationId) => '$donorDonationsUrl/$donationId/requests';
   static String donorApproveRequestUrl(String requestId) => '$baseUrl$apiPrefix/donor/requests/$requestId/approve';
   static String donorRejectRequestUrl(String requestId) => '$baseUrl$apiPrefix/donor/requests/$requestId/reject';
+  static String donorReceiverProfileUrl(String requestId) => '$baseUrl$apiPrefix/donor/requests/$requestId/receiver-profile';
   static String get donorPickupsUrl => '$baseUrl$apiPrefix/donor/pickups';
   static String donorPickupsByDonationUrl(String donationId) => '$donorPickupsUrl/by-donation/$donationId';
   static String donorPickupDetailUrl(String id) => '$donorPickupsUrl/$id';
   static String donorPickupOtpUrl(String id) => '$donorPickupsUrl/$id/otp';
+  static String donorPickupRouteUrl(String id) => '$donorPickupsUrl/$id/route';
+  static String donorPickupCancelUrl(String id) => '$donorPickupsUrl/$id/cancel';
   static String get donorProfileUrl => '$baseUrl$apiPrefix/donor/profile';
 
   // Receiver endpoints
@@ -97,8 +111,10 @@ class ApiConfig {
   static String receiverStartDeliveryUrl(String id) => '$receiverPickupsUrl/$id/start-delivery';
   static String receiverCompleteDeliveryUrl(String id) => '$receiverPickupsUrl/$id/complete-delivery';
   static String receiverTrackingUrl(String id) => '$receiverPickupsUrl/$id/tracking';
+  static String receiverPickupRouteUrl(String id) => '$receiverPickupsUrl/$id/route';
   static String receiverVerifyOtpUrl(String id) => '$receiverPickupsUrl/$id/verify-otp';
   static String receiverCompletePickupUrl(String id) => '$receiverPickupsUrl/$id/complete';
+  static String receiverPickupCancelUrl(String id) => '$receiverPickupsUrl/$id/cancel';
 
   // Donor tracking endpoint
   static String donorTrackingUrl(String id) => '$donorPickupsUrl/$id/tracking';

@@ -203,6 +203,35 @@ class DonationServiceTest {
     }
 
     @Test
+    void test10_consumeBefore_notAfterPickupUntil_rejected() {
+        Instant now = Instant.now();
+        Instant pickupUntil = now.plus(3, ChronoUnit.HOURS);
+        // consumeBefore equal to pickupUntil must be rejected
+        CreateDonationRequest requestEqual = new CreateDonationRequest(
+                "Meals", "desc", FoodCategory.PREPARED_MEALS, 10.0, "MEALS",
+                now.minus(1, ChronoUnit.HOURS), pickupUntil,
+                now, pickupUntil,
+                "Address", 12.0, 77.0, true, "signed"
+        );
+
+        IllegalArgumentException exEqual = assertThrows(IllegalArgumentException.class,
+                () -> donationService.createDonation("donor-firebase-uid", requestEqual, null));
+        assertTrue(exEqual.getMessage().contains("Food consumable-until deadline must be later than pickup window end time."));
+
+        // consumeBefore before pickupUntil must also be rejected
+        CreateDonationRequest requestBefore = new CreateDonationRequest(
+                "Meals", "desc", FoodCategory.PREPARED_MEALS, 10.0, "MEALS",
+                now.minus(1, ChronoUnit.HOURS), pickupUntil.minus(30, ChronoUnit.MINUTES),
+                now, pickupUntil,
+                "Address", 12.0, 77.0, true, "signed"
+        );
+
+        IllegalArgumentException exBefore = assertThrows(IllegalArgumentException.class,
+                () -> donationService.createDonation("donor-firebase-uid", requestBefore, null));
+        assertTrue(exBefore.getMessage().contains("Food consumable-until deadline must be later than pickup window end time."));
+    }
+
+    @Test
     void test13_donorSeesOnlyOwnDonations() {
         Donation d1 = new Donation();
         d1.setId(UUID.randomUUID());

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'models.dart';
+import '../shared/utils/date_formatter.dart';
 import '../shared/api_client.dart';
 import '../config/api_config.dart';
 import '../auth/auth_service.dart';
@@ -17,8 +17,22 @@ class AppState extends ChangeNotifier {
   int unreadNotificationsCount = 0;
   bool isLoading = false;
 
+  // Connection / wake-up state
+  bool isBackendConnecting = false;
+  String? connectionErrorMessage;
+  int retryAttempt = 0;
+  int maxRetryAttempts = 3;
+
+  void clearConnectionError() {
+    isBackendConnecting = false;
+    connectionErrorMessage = null;
+    retryAttempt = 0;
+    notifyListeners();
+  }
+
   AppState({this.apiClient, this.authService}) {
     if (ApiConfig.isRealMode) {
+      currentUser = UserProfile.empty();
       donations = [];
       requests = [];
       donorNotifications = [];
@@ -34,43 +48,46 @@ class AppState extends ChangeNotifier {
       final role = authService!.role;
       if (role == UserRole.donor) {
         currentUser = UserProfile(
-          id: authService!.uid ?? 'u1',
-          name: authService!.displayName ?? 'FreshBite Restaurant',
+          id: authService!.uid ?? '',
+          name: authService!.displayName ?? 'Donor User',
           role: 'DONOR',
-          email: authService!.email ?? 'freshbite@example.com',
-          phone: '+91 98765 43210',
-          address: '42 MG Road, Bengaluru 560001',
-          organizationType: 'Restaurant',
-          isVerified: true,
+          email: authService!.email ?? '',
+          phone: '',
+          address: '',
+          organizationType: 'HOTEL_RESTAURANT',
+          category: 'HOTEL_RESTAURANT',
+          isVerified: false,
+          profileStatus: 'INCOMPLETE',
+          verificationStatus: 'PENDING',
         );
       } else if (role == UserRole.receiver) {
         currentUser = UserProfile(
-          id: authService!.uid ?? 'u2',
-          name: authService!.displayName ?? 'Hope Foundation',
+          id: authService!.uid ?? '',
+          name: authService!.displayName ?? 'Receiver Organization',
           role: 'RECEIVER',
-          email: authService!.email ?? 'hope@example.com',
-          phone: '+91 91234 56789',
-          address: '18 Residency Road, Bengaluru 560025',
+          email: authService!.email ?? '',
+          phone: '',
+          address: '',
           organizationType: 'NGO',
-          isVerified: true,
+          category: 'NGO',
+          isVerified: false,
+          profileStatus: 'INCOMPLETE',
+          verificationStatus: 'PENDING',
         );
       }
+      notifyListeners();
+    } else {
+      currentUser = UserProfile.empty();
+      donations = [];
+      requests = [];
+      donorNotifications = [];
+      receiverNotifications = [];
       notifyListeners();
     }
   }
 
   // ─── Users ─────────────────────────────────
-  UserProfile currentUser = UserProfile(
-    id: 'u1',
-    name: 'FreshBite Restaurant',
-    role: 'DONOR',
-    email: 'freshbite@example.com',
-    phone: '+91 98765 43210',
-    address: '42 MG Road, Bengaluru 560001',
-    organizationType: 'Restaurant',
-    isVerified: true,
-    joinedAt: DateTime(2026, 3, 15),
-  );
+  UserProfile currentUser = UserProfile.empty();
 
   static final _donorProfile = UserProfile(
     id: 'u1',
@@ -97,6 +114,7 @@ class AppState extends ChangeNotifier {
   );
 
   void switchRole() {
+    if (!ApiConfig.isMockMode) return;
     if (currentUser.role == 'DONOR') {
       currentUser = _receiverProfile;
     } else {
@@ -675,12 +693,9 @@ class AppState extends ChangeNotifier {
         icon = Icons.restaurant;
     }
 
-    DateTime? consumeBeforeTime;
-    if (json['consumeBefore'] != null) {
-      try {
-        consumeBeforeTime = DateTime.parse(json['consumeBefore'].toString()).toLocal();
-      } catch (_) {}
-    }
+    DateTime? consumeBeforeTime = AppDateFormatter.parseToLocal(json['consumeBefore']);
+    DateTime? pickupFrom = AppDateFormatter.parseToLocal(json['pickupAvailableFrom']);
+    DateTime? pickupUntil = AppDateFormatter.parseToLocal(json['pickupAvailableUntil']);
 
     DateTime createdAt = DateTime.now();
     if (json['createdAt'] != null) {
@@ -698,7 +713,7 @@ class AppState extends ChangeNotifier {
       quantity: (json['quantity'] is num) ? (json['quantity'] as num).toInt() : 0,
       unit: json['quantityUnit']?.toString() ?? 'meals',
       category: cat,
-      consumeBefore: consumeBeforeTime != null ? DateFormat('MMM d, h:mm a').format(consumeBeforeTime) : 'Today',
+      consumeBefore: AppDateFormatter.formatConsumeBefore(consumeBeforeTime),
       consumeBeforeTime: consumeBeforeTime,
       storageCondition: json['storageCondition']?.toString() ?? 'Room Temperature',
       packagingCondition: json['packagingCondition']?.toString() ?? 'Sealed',
@@ -706,8 +721,10 @@ class AppState extends ChangeNotifier {
       allergenInfo: json['allergenInfo']?.toString() ?? '',
       foodSafetyDeclared: json['foodSafetyDeclared'] == true,
       pickupAddress: json['pickupAddress']?.toString() ?? '',
-      pickupWindowStart: json['pickupAvailableFrom'] != null ? json['pickupAvailableFrom'].toString() : '',
-      pickupWindowEnd: json['pickupAvailableUntil'] != null ? json['pickupAvailableUntil'].toString() : '',
+      pickupWindowStart: AppDateFormatter.formatTime(pickupFrom),
+      pickupWindowEnd: AppDateFormatter.formatTime(pickupUntil),
+      pickupAvailableFrom: pickupFrom,
+      pickupAvailableUntil: pickupUntil,
       pickupInstructions: json['pickupInstructions']?.toString() ?? '',
       status: (json['status'] ?? 'AVAILABLE').toString().toUpperCase(),
       createdAt: createdAt,
@@ -750,18 +767,46 @@ class AppState extends ChangeNotifier {
     donorDonationsError = null;
     notifyListeners();
     try {
-      final res = await apiClient!.get(ApiConfig.donorDonationsUrl);
+      final res = await apiClient!.get(
+        ApiConfig.donorDonationsUrl,
+        onRetry: (attempt, max, delay, error) {
+          isBackendConnecting = true;
+          retryAttempt = attempt;
+          connectionErrorMessage = 'MealShare backend is starting up. Reconnecting (attempt $attempt of $max)...';
+          notifyListeners();
+        },
+      );
+      isBackendConnecting = false;
+      connectionErrorMessage = null;
+      retryAttempt = 0;
       if (res is Map<String, dynamic> && res['content'] is List) {
         donations = (res['content'] as List).map((json) => _mapBackendDonation(json as Map<String, dynamic>)).toList();
       } else {
         donations = [];
       }
     } on ApiException catch (e) {
+      isBackendConnecting = false;
       if (ApiConfig.isRealMode) {
-        donorDonationsError = e.message;
-        donations = [];
+        if (e.isNotFound) {
+          donorDonationsError = null;
+          donations = [];
+        } else if (e.isForbidden) {
+          donorDonationsError = 'Access denied. Account may be restricted or suspended.';
+          donations = [];
+        } else if (e.isUnauthorized) {
+          donorDonationsError = 'Authentication session expired. Please sign in again.';
+          donations = [];
+        } else if (e.isTransient) {
+          donorDonationsError = 'MealShare backend is unreachable. Please pull down to refresh.';
+          connectionErrorMessage = 'MealShare backend is unreachable. Please pull down to refresh.';
+          donations = [];
+        } else {
+          donorDonationsError = e.message;
+          donations = [];
+        }
       }
     } catch (e) {
+      isBackendConnecting = false;
       if (ApiConfig.isRealMode) {
         donorDonationsError = "Backend unavailable. Could not fetch donations.";
         donations = [];
@@ -875,7 +920,7 @@ class AppState extends ChangeNotifier {
       quantity: quantity,
       unit: unit,
       category: category,
-      consumeBefore: DateFormat('MMM d, h:mm a').format(consumeBefore),
+      consumeBefore: AppDateFormatter.formatConsumeBefore(consumeBefore),
       consumeBeforeTime: consumeBefore,
       storageCondition: storageCondition,
       packagingCondition: packagingCondition,
@@ -883,8 +928,10 @@ class AppState extends ChangeNotifier {
       allergenInfo: allergenInfo,
       foodSafetyDeclared: foodSafetyDeclared,
       pickupAddress: pickupAddress,
-      pickupWindowStart: DateFormat('h:mm a').format(pickupAvailableFrom),
-      pickupWindowEnd: DateFormat('h:mm a').format(pickupAvailableUntil),
+      pickupWindowStart: AppDateFormatter.formatTime(pickupAvailableFrom),
+      pickupWindowEnd: AppDateFormatter.formatTime(pickupAvailableUntil),
+      pickupAvailableFrom: pickupAvailableFrom,
+      pickupAvailableUntil: pickupAvailableUntil,
       status: 'AVAILABLE',
       createdAt: DateTime.now(),
     );
@@ -1058,8 +1105,19 @@ class AppState extends ChangeNotifier {
   Future<void> fetchDonorProfileRemote() async {
     if (apiClient == null) return;
     try {
-      final prof = await apiClient!.get(ApiConfig.donorProfileUrl);
+      final prof = await apiClient!.get(
+        ApiConfig.donorProfileUrl,
+        onRetry: (attempt, max, delay, error) {
+          isBackendConnecting = true;
+          retryAttempt = attempt;
+          connectionErrorMessage = 'MealShare backend is starting up. Reconnecting (attempt $attempt of $max)...';
+          notifyListeners();
+        },
+      );
       final me = await apiClient!.get(ApiConfig.usersMeUrl);
+      isBackendConnecting = false;
+      connectionErrorMessage = null;
+      retryAttempt = 0;
       if (prof is Map<String, dynamic>) {
         final meMap = me is Map<String, dynamic> ? me : <String, dynamic>{};
         final verStatus = prof['verificationStatus']?.toString() ?? meMap['verificationStatus']?.toString() ?? 'PENDING';
@@ -1091,7 +1149,24 @@ class AppState extends ChangeNotifier {
         );
         notifyListeners();
       }
-    } catch (_) {}
+    } on ApiException catch (e) {
+      isBackendConnecting = false;
+      if (e.isNotFound) {
+        connectionErrorMessage = null;
+      } else if (e.isForbidden) {
+        connectionErrorMessage = 'Access denied. Account may be restricted or suspended.';
+      } else if (e.isUnauthorized) {
+        connectionErrorMessage = 'Authentication session expired. Please sign in again.';
+      } else if (e.isTransient) {
+        connectionErrorMessage = 'MealShare backend is unreachable. Please pull down to refresh.';
+      } else {
+        connectionErrorMessage = e.message;
+      }
+      notifyListeners();
+    } catch (_) {
+      isBackendConnecting = false;
+      notifyListeners();
+    }
   }
 
   Future<void> updateDonorProfileRemote({
@@ -1133,8 +1208,19 @@ class AppState extends ChangeNotifier {
   Future<void> fetchReceiverProfileRemote() async {
     if (apiClient == null) return;
     try {
-      final prof = await apiClient!.get(ApiConfig.receiverProfileUrl);
+      final prof = await apiClient!.get(
+        ApiConfig.receiverProfileUrl,
+        onRetry: (attempt, max, delay, error) {
+          isBackendConnecting = true;
+          retryAttempt = attempt;
+          connectionErrorMessage = 'MealShare backend is starting up. Reconnecting (attempt $attempt of $max)...';
+          notifyListeners();
+        },
+      );
       final me = await apiClient!.get(ApiConfig.usersMeUrl);
+      isBackendConnecting = false;
+      connectionErrorMessage = null;
+      retryAttempt = 0;
       if (prof is Map<String, dynamic>) {
         final meMap = me is Map<String, dynamic> ? me : <String, dynamic>{};
         final verStatus = prof['verificationStatus']?.toString() ?? meMap['verificationStatus']?.toString() ?? 'PENDING';
@@ -1168,7 +1254,24 @@ class AppState extends ChangeNotifier {
         );
         notifyListeners();
       }
-    } catch (_) {}
+    } on ApiException catch (e) {
+      isBackendConnecting = false;
+      if (e.isNotFound) {
+        connectionErrorMessage = null;
+      } else if (e.isForbidden) {
+        connectionErrorMessage = 'Access denied. Account may be restricted or suspended.';
+      } else if (e.isUnauthorized) {
+        connectionErrorMessage = 'Authentication session expired. Please sign in again.';
+      } else if (e.isTransient) {
+        connectionErrorMessage = 'MealShare backend is unreachable. Please pull down to refresh.';
+      } else {
+        connectionErrorMessage = e.message;
+      }
+      notifyListeners();
+    } catch (_) {
+      isBackendConnecting = false;
+      notifyListeners();
+    }
   }
 
   Future<void> updateReceiverProfileRemote({
@@ -1233,7 +1336,19 @@ class AppState extends ChangeNotifier {
         'radiusKm': radiusKm,
         if (category != null && category != 'All') 'foodCategory': category.toUpperCase(),
       };
-      final res = await apiClient!.get(ApiConfig.receiverNearbyDonationsUrl, queryParameters: qParams);
+      final res = await apiClient!.get(
+        ApiConfig.receiverNearbyDonationsUrl,
+        queryParameters: qParams,
+        onRetry: (attempt, max, delay, error) {
+          isBackendConnecting = true;
+          retryAttempt = attempt;
+          connectionErrorMessage = 'MealShare backend is starting up. Reconnecting (attempt $attempt of $max)...';
+          notifyListeners();
+        },
+      );
+      isBackendConnecting = false;
+      connectionErrorMessage = null;
+      retryAttempt = 0;
       if (res is Map<String, dynamic> && res['content'] is List) {
         final items = (res['content'] as List).map((j) => _mapBackendDonation(j as Map<String, dynamic>)).toList();
         donations = items;
@@ -1241,11 +1356,28 @@ class AppState extends ChangeNotifier {
         donations = [];
       }
     } on ApiException catch (e) {
+      isBackendConnecting = false;
       if (ApiConfig.isRealMode) {
-        nearbyDonationsError = e.message;
-        donations = [];
+        if (e.isNotFound) {
+          nearbyDonationsError = null;
+          donations = [];
+        } else if (e.isForbidden) {
+          nearbyDonationsError = 'Access denied. Account may be restricted or suspended.';
+          donations = [];
+        } else if (e.isUnauthorized) {
+          nearbyDonationsError = 'Authentication session expired. Please sign in again.';
+          donations = [];
+        } else if (e.isTransient) {
+          nearbyDonationsError = 'MealShare backend is unreachable. Please pull down to refresh.';
+          connectionErrorMessage = 'MealShare backend is unreachable. Please pull down to refresh.';
+          donations = [];
+        } else {
+          nearbyDonationsError = e.message;
+          donations = [];
+        }
       }
     } catch (e) {
+      isBackendConnecting = false;
       if (ApiConfig.isRealMode) {
         nearbyDonationsError = "Backend unavailable. Could not fetch nearby donations.";
         donations = [];
@@ -1300,7 +1432,18 @@ class AppState extends ChangeNotifier {
     receiverRequestsError = null;
     notifyListeners();
     try {
-      final res = await apiClient!.get(ApiConfig.receiverRequestsUrl);
+      final res = await apiClient!.get(
+        ApiConfig.receiverRequestsUrl,
+        onRetry: (attempt, max, delay, error) {
+          isBackendConnecting = true;
+          retryAttempt = attempt;
+          connectionErrorMessage = 'MealShare backend is starting up. Reconnecting (attempt $attempt of $max)...';
+          notifyListeners();
+        },
+      );
+      isBackendConnecting = false;
+      connectionErrorMessage = null;
+      retryAttempt = 0;
       if (res is Map<String, dynamic> && res['content'] is List) {
         final items = (res['content'] as List).map((j) => _mapBackendRequest(j as Map<String, dynamic>)).toList();
         requests = items;
@@ -1308,11 +1451,28 @@ class AppState extends ChangeNotifier {
         requests = [];
       }
     } on ApiException catch (e) {
+      isBackendConnecting = false;
       if (ApiConfig.isRealMode) {
-        receiverRequestsError = e.message;
-        requests = [];
+        if (e.isNotFound) {
+          receiverRequestsError = null;
+          requests = [];
+        } else if (e.isForbidden) {
+          receiverRequestsError = 'Access denied. Account may be restricted or suspended.';
+          requests = [];
+        } else if (e.isUnauthorized) {
+          receiverRequestsError = 'Authentication session expired. Please sign in again.';
+          requests = [];
+        } else if (e.isTransient) {
+          receiverRequestsError = 'MealShare backend is unreachable. Please pull down to refresh.';
+          connectionErrorMessage = 'MealShare backend is unreachable. Please pull down to refresh.';
+          requests = [];
+        } else {
+          receiverRequestsError = e.message;
+          requests = [];
+        }
       }
     } catch (e) {
+      isBackendConnecting = false;
       if (ApiConfig.isRealMode) {
         receiverRequestsError = "Backend unavailable. Could not fetch requests.";
         requests = [];

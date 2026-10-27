@@ -58,4 +58,14 @@ public class AdminUserController {
         AdminUserResponse response = adminUserService.updateUserStatus(id, request, principal.uid(), httpRequest);
         return ResponseEntity.ok(response);
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> removeUser(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal FirebasePrincipal principal,
+            HttpServletRequest httpRequest
+    ) {
+        adminUserService.removeUser(id, principal.uid(), httpRequest);
+        return ResponseEntity.noContent().build();
+    }
 }

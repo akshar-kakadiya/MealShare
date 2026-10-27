@@ -32,16 +32,72 @@ export const getBackendAssetUrl = (path: string | null | undefined): string => {
   return `${backendHost}${cleanPath}`;
 };
 
+export const isTransientError = (error: any): boolean => {
+  if (!error) return false;
+  if (axios.isAxiosError(error)) {
+    if (!error.response) {
+      return (
+        error.code === 'ERR_NETWORK' ||
+        error.code === 'ECONNABORTED' ||
+        error.code === 'ETIMEDOUT' ||
+        Boolean(error.request)
+      );
+    }
+    const status = error.response.status;
+    return status === 408 || status === 502 || status === 503 || status === 504;
+  }
+  if (error.code === 'ECONNABORTED' || error.message?.includes('timeout') || error.message?.includes('Network Error')) {
+    return true;
+  }
+  return false;
+};
+
+export interface RetryOptions {
+  maxRetries?: number;
+  initialDelayMs?: number;
+  backoffFactor?: number;
+  onRetry?: (attempt: number, maxRetries: number, delayMs: number, error: any) => void;
+}
+
+export async function executeWithRetry<T>(
+  requestFn: () => Promise<T>,
+  options: RetryOptions = {}
+): Promise<T> {
+  const maxRetries = options.maxRetries ?? 3;
+  const initialDelay = options.initialDelayMs ?? 1500;
+  const factor = options.backoffFactor ?? 2;
+
+  let attempt = 0;
+  while (true) {
+    try {
+      return await requestFn();
+    } catch (err: any) {
+      attempt++;
+      if (attempt > maxRetries || !isTransientError(err)) {
+        throw err;
+      }
+      const delayMs = initialDelay * Math.pow(factor, attempt - 1);
+      if (options.onRetry) {
+        options.onRetry(attempt, maxRetries, delayMs, err);
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000,
+  timeout: 25000,
 });
 
 // Attach fresh Firebase ID token to every request
 apiClient.interceptors.request.use(async (config) => {
+  if (config.headers?.Authorization) {
+    return config;
+  }
   const user = auth.currentUser;
   if (user) {
     try {
@@ -49,6 +105,7 @@ apiClient.interceptors.request.use(async (config) => {
       config.headers.Authorization = `Bearer ${token}`;
     } catch (err) {
       console.error('Failed to get Firebase ID token:', err);
+      return Promise.reject(err);
     }
   }
   return config;
@@ -61,23 +118,19 @@ apiClient.interceptors.response.use(
     if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
       error.message = 'Connection timed out. The server may be waking up. Please retry.';
     } else if (!error.response) {
-      error.message = 'Unable to connect to the MealShare backend.';
+      error.message = 'Unable to connect to the MealShare backend. The server may be waking up or offline.';
     } else if (error.response.status === 401) {
       error.message = 'Your session has expired. Please sign in again.';
-      if (auth.currentUser) {
-        auth.signOut();
-      }
     } else if (error.response.status === 403) {
-      error.message = 'You do not have permission to access this resource.';
+      error.message = 'Access denied. You do not have permission to access this resource.';
     } else if (error.response.status === 404) {
       if (error.config?.url?.includes('/users/me')) {
         error.message = 'No administrator profile found for this account.';
-        if (auth.currentUser) {
-          auth.signOut();
-        }
       } else {
         error.message = error.response.data?.message || 'Requested resource not found.';
       }
+    } else if (error.response.status === 502 || error.response.status === 503 || error.response.status === 504) {
+      error.message = 'The MealShare backend is currently waking up or unavailable. Please wait a moment.';
     } else if (error.response.data?.message) {
       error.message = error.response.data.message;
     }

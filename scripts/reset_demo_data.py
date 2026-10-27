@@ -63,7 +63,7 @@ def sync_firebase():
         demo_accounts = [
             {
                 "email": "admin@mealshare.org",
-                "uid": "ObiO1gDTdBTZJkzDFEGgTVNTEir2",
+                "uid": "uSkzPzgPUVQBRES9AaDsF1ONqEG2",
                 "password": "AdminPassword123!",
                 "name": "Platform Administrator"
             },

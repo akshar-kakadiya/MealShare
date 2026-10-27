@@ -8,6 +8,11 @@ import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
 import '../shared/widgets/status_chip.dart';
 import '../shared/widgets/timeline_widget.dart';
+import 'dart:async';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../shared/utils/polyline_decoder.dart';
+import '../shared/widgets/donation_tracking_map.dart';
+import '../tracking/pickup_live_tracking_service.dart';
 
 class ReceiverPickupTrackingScreen extends StatefulWidget {
   final String requestId;
@@ -19,8 +24,46 @@ class ReceiverPickupTrackingScreen extends StatefulWidget {
 
 class _ReceiverPickupTrackingScreenState extends State<ReceiverPickupTrackingScreen> {
   Map<String, dynamic>? _pickupData;
+  Map<String, dynamic>? _trackingData;
   bool _loading = false;
   String? _error;
+  StreamSubscription<TrackingSessionSnapshot?>? _rtdbSubscription;
+  List<LatLng>? _roadRoutePoints;
+  String? _roadDistance;
+  String? _roadDuration;
+  bool _fetchingRoute = false;
+
+  Future<void> _fetchRoadRoute(String pickupId, {double? lat, double? lng}) async {
+    if (_fetchingRoute || !mounted) return;
+    _fetchingRoute = true;
+    try {
+      final client = context.read<ApiClient>();
+      String url = ApiConfig.receiverPickupRouteUrl(pickupId);
+      if (lat != null && lng != null) {
+        url += '?lat=$lat&lng=$lng';
+      }
+      final res = await client.get(url);
+      if (mounted && res is Map<String, dynamic> && res['available'] == true) {
+        final encoded = res['encodedPolyline']?.toString() ?? '';
+        final points = decodePolyline(encoded);
+        setState(() {
+          _roadRoutePoints = points;
+          _roadDistance = res['formattedDistance']?.toString();
+          _roadDuration = res['formattedDuration']?.toString();
+        });
+      }
+    } catch (e) {
+      debugPrint('[ReceiverTracking] Route calculation error: $e');
+    } finally {
+      _fetchingRoute = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _rtdbSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -42,6 +85,50 @@ class _ReceiverPickupTrackingScreenState extends State<ReceiverPickupTrackingScr
         setState(() {
           _pickupData = res;
         });
+
+        final pid = res['pickupId']?.toString() ?? res['id']?.toString();
+        if (pid != null && pid.isNotEmpty) {
+          try {
+            final trackRes = await client.get(ApiConfig.receiverTrackingUrl(pid));
+            if (trackRes is Map<String, dynamic> && mounted) {
+              setState(() {
+                _trackingData = trackRes;
+              });
+              _fetchRoadRoute(
+                pid,
+                lat: (trackRes['currentLatitude'] as num?)?.toDouble(),
+                lng: (trackRes['currentLongitude'] as num?)?.toDouble(),
+              );
+            }
+            if (!mounted) return;
+            try {
+              final trackingService = context.read<PickupLiveTrackingService?>();
+              if (trackingService != null) {
+                _rtdbSubscription?.cancel();
+                _rtdbSubscription = trackingService.watchPickupSession(pid).listen((snapshot) {
+                  if (!mounted || snapshot == null) return;
+                  setState(() {
+                    final recLoc = snapshot.receiverLocation;
+                    _trackingData = {
+                      ...?_trackingData,
+                      'status': snapshot.status,
+                      'trackingActive': snapshot.trackingActive,
+                      if (recLoc != null) ...{
+                        'currentLatitude': recLoc.latitude,
+                        'currentLongitude': recLoc.longitude,
+                        'speed': recLoc.speed,
+                        'heading': recLoc.heading,
+                        'locationUpdatedAt': recLoc.timestamp.toIso8601String(),
+                      },
+                      if (snapshot.donorLatitude != null) 'donorLatitude': snapshot.donorLatitude,
+                      if (snapshot.donorLongitude != null) 'donorLongitude': snapshot.donorLongitude,
+                    };
+                  });
+                });
+              }
+            } catch (_) {}
+          } catch (_) {}
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -67,6 +154,19 @@ class _ReceiverPickupTrackingScreenState extends State<ReceiverPickupTrackingScr
     final donorName = _pickupData?['donorName']?.toString() ?? 'Donor';
     final pickupAddress = _pickupData?['pickupAddress']?.toString() ?? 'Donor Address';
     final status = (_pickupData?['status']?.toString() ?? req?.status ?? 'PICKUP_PENDING').toUpperCase();
+
+    final donorLat = (_trackingData?['donorLatitude'] ?? _pickupData?['pickupLatitude'] ?? _pickupData?['donorLatitude']) as num?;
+    final donorLng = (_trackingData?['donorLongitude'] ?? _pickupData?['pickupLongitude'] ?? _pickupData?['donorLongitude']) as num?;
+    final receiverLat = (_trackingData?['currentLatitude'] ?? _pickupData?['currentLatitude']) as num?;
+    final receiverLng = (_trackingData?['currentLongitude'] ?? _pickupData?['currentLongitude']) as num?;
+    final destLat = (_trackingData?['destinationLatitude'] ?? _pickupData?['destinationLatitude'] ?? state.currentUser.latitude) as num?;
+    final destLng = (_trackingData?['destinationLongitude'] ?? _pickupData?['destinationLongitude'] ?? state.currentUser.longitude) as num?;
+    final dist = (_trackingData?['distanceToTargetMeters'] ?? _trackingData?['distanceMeters']) as num?;
+
+    DateTime? lastUpdated;
+    if (_trackingData?['locationUpdatedAt'] != null) {
+      lastUpdated = DateTime.tryParse(_trackingData!['locationUpdatedAt'].toString())?.toLocal();
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -184,6 +284,62 @@ class _ReceiverPickupTrackingScreenState extends State<ReceiverPickupTrackingScr
                         ),
                       ],
                     ),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+
+                // Live Tracking Map Card
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Live Redistribution Map',
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                            ),
+                            if (dist != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '${dist.toInt()} m to destination',
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue.shade800),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        height: 280,
+                        child: DonationTrackingMap(
+                          receiverLatitude: receiverLat?.toDouble(),
+                          receiverLongitude: receiverLng?.toDouble(),
+                          donorLatitude: donorLat?.toDouble(),
+                          donorLongitude: donorLng?.toDouble(),
+                          donorLabel: donorName,
+                          destinationLatitude: destLat?.toDouble(),
+                          destinationLongitude: destLng?.toDouble(),
+                          destinationLabel: state.currentUser.name,
+                          phase: _trackingData?['phase']?.toString() ?? (status == 'IN_TRANSIT' ? 'DELIVERY' : 'APPROACH'),
+                          distanceMeters: dist?.toDouble(),
+                          lastUpdated: lastUpdated,
+                          isReceiver: true,
+                          roadRoutePoints: _roadRoutePoints,
+                          roadDistance: _roadDistance,
+                          roadDuration: _roadDuration,
+                          onRefresh: _fetchPickupDetails,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),

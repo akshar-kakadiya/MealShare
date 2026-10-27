@@ -6,6 +6,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
 import '../shared/widgets/status_chip.dart';
 import '../shared/widgets/empty_state.dart';
+import 'widgets/receiver_profile_bottom_sheet.dart';
 
 class DonorRequestsScreen extends StatefulWidget {
   const DonorRequestsScreen({super.key});
@@ -49,7 +50,7 @@ class _DonorRequestsScreenState extends State<DonorRequestsScreen> {
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              children: ['All', 'Pending', 'Approved', 'Rejected', 'Completed'].map((f) {
+              children: ['All', 'Pending', 'Approved', 'Rejected', 'Completed', 'Expired'].map((f) {
                 final isSelected = _filter == f;
                 return Padding(
                   padding: const EdgeInsets.only(right: AppSpacing.sm),
@@ -132,9 +133,16 @@ class _DonorRequestsScreenState extends State<DonorRequestsScreen> {
                                 ],
                                 if (req.status == 'PENDING') ...[
                                   const SizedBox(height: AppSpacing.md),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
+                                  Wrap(
+                                    alignment: WrapAlignment.end,
+                                    spacing: AppSpacing.sm,
+                                    runSpacing: AppSpacing.xs,
                                     children: [
+                                      OutlinedButton.icon(
+                                        icon: const Icon(Icons.info_outline, size: 16),
+                                        label: const Text('View Profile'),
+                                        onPressed: () => showReceiverProfileModal(context, req.id, req.receiverName),
+                                      ),
                                       OutlinedButton(
                                         onPressed: () {
                                           showDialog(
@@ -186,7 +194,6 @@ class _DonorRequestsScreenState extends State<DonorRequestsScreen> {
                                         style: OutlinedButton.styleFrom(foregroundColor: AppColors.error, side: BorderSide(color: AppColors.error)),
                                         child: const Text('Reject'),
                                       ),
-                                      const SizedBox(width: AppSpacing.sm),
                                       FilledButton(
                                         onPressed: () {
                                           showDialog(

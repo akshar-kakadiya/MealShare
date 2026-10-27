@@ -32,6 +32,9 @@ public class FirebaseConfig {
     @Value("${firebase.credentials.json:}")
     private String credentialsJson;
 
+    @Value("${firebase.database.url:https://mealshare-100-default-rtdb.firebaseio.com}")
+    private String databaseUrl;
+
     private final CountDownLatch initLatch = new CountDownLatch(1);
     private final java.util.concurrent.atomic.AtomicBoolean isInitializing = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.concurrent.ExecutorService initExecutor = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
@@ -64,23 +67,30 @@ public class FirebaseConfig {
 
             boolean isProd = Arrays.asList(environment.getActiveProfiles()).contains("prod");
 
+            String dbUrl = resolveDatabaseUrl();
+
             // 1. Try to load from environment JSON (preferred in cloud deployment / Render)
             String rawJson = resolveCredentialsJson();
             if (rawJson != null && !rawJson.isBlank()) {
                 String normalizedJson = normalizeCredentialsJson(rawJson);
                 if (normalizedJson != null && !normalizedJson.isBlank()) {
                     try (InputStream stream = new ByteArrayInputStream(normalizedJson.getBytes(StandardCharsets.UTF_8))) {
-                        FirebaseOptions options = FirebaseOptions.builder()
+                        FirebaseOptions.Builder optionsBuilder = FirebaseOptions.builder()
                                 .setCredentials(GoogleCredentials.fromStream(stream))
                                 .setConnectTimeout(10000)
-                                .setReadTimeout(10000)
-                                .build();
+                                .setReadTimeout(10000);
+
+                        if (dbUrl != null && !dbUrl.isBlank()) {
+                            optionsBuilder.setDatabaseUrl(dbUrl);
+                        }
+
+                        FirebaseOptions options = optionsBuilder.build();
 
                         if (FirebaseApp.getApps().isEmpty()) {
                             FirebaseApp.initializeApp(options);
                         }
-                        log.info("Firebase Admin SDK initialized successfully from environment variable JSON (project: {}).",
-                                extractProjectId(normalizedJson));
+                        log.info("Firebase Admin SDK initialized successfully from environment variable JSON (project: {}, rtdb: {}).",
+                                extractProjectId(normalizedJson), dbUrl);
                         return;
                     } catch (Exception e) {
                         log.error("Failed to initialize Firebase Admin SDK from environment variable JSON: {}", e.getMessage());
@@ -92,16 +102,21 @@ public class FirebaseConfig {
             String path = resolveCredentialsPath();
             if (path != null && !path.isBlank() && new File(path).exists()) {
                 try (FileInputStream serviceAccount = new FileInputStream(path)) {
-                    FirebaseOptions options = FirebaseOptions.builder()
+                    FirebaseOptions.Builder optionsBuilder = FirebaseOptions.builder()
                             .setCredentials(GoogleCredentials.fromStream(serviceAccount))
                             .setConnectTimeout(10000)
-                            .setReadTimeout(10000)
-                            .build();
+                            .setReadTimeout(10000);
+
+                    if (dbUrl != null && !dbUrl.isBlank()) {
+                        optionsBuilder.setDatabaseUrl(dbUrl);
+                    }
+
+                    FirebaseOptions options = optionsBuilder.build();
 
                     if (FirebaseApp.getApps().isEmpty()) {
                         FirebaseApp.initializeApp(options);
                     }
-                    log.info("Firebase Admin SDK initialized successfully from credentials file: {}", path);
+                    log.info("Firebase Admin SDK initialized successfully from credentials file: {} (rtdb: {})", path, dbUrl);
                     return;
                 } catch (Exception e) {
                     log.error("Failed to initialize Firebase Admin SDK from credentials file {}: {}", path, e.getMessage());
@@ -272,6 +287,33 @@ public class FirebaseConfig {
         } catch (Exception ignored) {
         }
         return "configured";
+    }
+
+    public String resolveDatabaseUrl() {
+        String url = environment.getProperty("FIREBASE_DATABASE_URL");
+        if (url != null && !url.isBlank()) {
+            return url.trim();
+        }
+        url = System.getenv("FIREBASE_DATABASE_URL");
+        if (url != null && !url.isBlank()) {
+            return url.trim();
+        }
+        if (databaseUrl != null && !databaseUrl.isBlank()) {
+            return databaseUrl.trim();
+        }
+        return "https://mealshare-100-default-rtdb.firebaseio.com";
+    }
+
+    @org.springframework.context.annotation.Bean
+    public com.google.firebase.database.FirebaseDatabase firebaseDatabase() {
+        if (!FirebaseApp.getApps().isEmpty()) {
+            try {
+                return com.google.firebase.database.FirebaseDatabase.getInstance();
+            } catch (Exception e) {
+                log.warn("FirebaseDatabase instance could not be retrieved from default FirebaseApp: {}", e.getMessage());
+            }
+        }
+        return null;
     }
 }
 

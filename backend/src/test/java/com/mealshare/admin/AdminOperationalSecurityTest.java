@@ -39,7 +39,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -322,5 +322,38 @@ class AdminOperationalSecurityTest {
                 .andExpect(content().string(not(containsString("password"))))
                 .andExpect(content().string(not(containsString("token"))))
                 .andExpect(content().string(not(containsString("secret"))));
+    }
+
+    @Test
+    @DisplayName("Admin removing user succeeds with 204 No Content")
+    void admin_removeUser_success() throws Exception {
+        UUID targetUserId = UUID.randomUUID();
+
+        doNothing().when(adminUserService).removeUser(eq(targetUserId), eq("admin-uid"), any());
+
+        mockMvc.perform(delete("/api/v1/admin/users/" + targetUserId)
+                        .header("Authorization", "Bearer token-admin"))
+                .andExpect(status().isNoContent());
+
+        verify(adminUserService).removeUser(eq(targetUserId), eq("admin-uid"), any());
+    }
+
+    @Test
+    @DisplayName("Non-admin role cannot delete user: returns 403 Forbidden")
+    void donor_removeUser_forbidden() throws Exception {
+        UUID targetUserId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/v1/admin/users/" + targetUserId)
+                        .header("Authorization", "Bearer token-donor"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Unauthenticated request to remove user returns 401 Unauthorized")
+    void unauthenticated_removeUser_unauthorized() throws Exception {
+        UUID targetUserId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/v1/admin/users/" + targetUserId))
+                .andExpect(status().isUnauthorized());
     }
 }

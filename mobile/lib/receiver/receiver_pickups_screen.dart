@@ -1,14 +1,16 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import 'package:mealshare_mobile/auth/auth_service.dart';
 import 'package:mealshare_mobile/shared/api_client.dart';
 import 'package:mealshare_mobile/config/api_config.dart';
 import 'package:mealshare_mobile/shared/device_hardware_service.dart';
+import 'package:mealshare_mobile/shared/utils/date_formatter.dart';
 import 'package:mealshare_mobile/theme/app_colors.dart';
 import 'package:mealshare_mobile/shared/widgets/status_chip.dart';
 import 'package:mealshare_mobile/shared/widgets/empty_state.dart';
 import 'package:mealshare_mobile/shared/widgets/rating_dialog.dart';
+import 'package:mealshare_mobile/tracking/pickup_live_tracking_service.dart';
 
 class ReceiverPickupsScreen extends StatefulWidget {
   const ReceiverPickupsScreen({super.key});
@@ -34,12 +36,160 @@ class _ReceiverPickupsScreenState extends State<ReceiverPickupsScreen> {
   List<Map<String, dynamic>> _pickups = [];
   final Map<String, Map<String, dynamic>> _pickupRatingStatuses = {};
   final Map<String, Map<String, dynamic>> _trackingData = {};
+  Timer? _gpsStreamTimer;
+  DateTime? _lastLocationUpdateTime;
+  String? _trackingError;
 
   @override
   void initState() {
     super.initState();
     _loadPickups();
   }
+
+  @override
+  void dispose() {
+    _gpsStreamTimer?.cancel();
+    try {
+      final trackingService = context.read<PickupLiveTrackingService?>();
+      trackingService?.stopPublishingLocation();
+    } catch (_) {}
+    super.dispose();
+  }
+
+  void _startGpsStreamingIfActive() {
+    final activePrePickup = _pickups.where((p) {
+      final s = (p['status'] ?? '').toString().toUpperCase();
+      return s == 'EN_ROUTE_TO_PICKUP';
+    }).firstOrNull;
+
+    PickupLiveTrackingService? trackingService;
+    try {
+      trackingService = context.read<PickupLiveTrackingService?>();
+    } catch (_) {}
+
+    if (activePrePickup != null) {
+      final pid = activePrePickup['pickupId']?.toString() ?? activePrePickup['id']?.toString() ?? '';
+      if (pid.isNotEmpty && trackingService != null) {
+        if (!trackingService.isPublishing || trackingService.activePublishingPickupId != pid) {
+          final client = context.read<ApiClient>();
+          trackingService.startPublishingLocation(
+            pickupId: pid,
+            apiClient: client,
+          ).then((started) {
+            if (!mounted) return;
+            setState(() {
+              if (trackingService!.trackingError != null) {
+                _trackingError = trackingService.trackingError;
+              } else {
+                _trackingError = null;
+                _lastLocationUpdateTime = trackingService.lastPublishedTime ?? DateTime.now();
+              }
+            });
+          });
+        }
+      } else {
+        // Fallback for one-shot check
+        _streamCurrentGpsToActivePickups();
+      }
+    } else {
+      trackingService?.stopPublishingLocation();
+      _gpsStreamTimer?.cancel();
+      _gpsStreamTimer = null;
+    }
+  }
+
+  Future<void> _streamCurrentGpsToActivePickups() async {
+    final activePickups = _pickups.where((p) {
+      final s = (p['status'] ?? '').toString().toUpperCase();
+      return s == 'EN_ROUTE_TO_PICKUP';
+    }).toList();
+    if (activePickups.isEmpty) {
+      _gpsStreamTimer?.cancel();
+      _gpsStreamTimer = null;
+      return;
+    }
+
+    try {
+      final pos = await DeviceHardwareService.getCurrentLocation();
+      if (pos == null) {
+        if (mounted) {
+          setState(() {
+            _trackingError = 'GPS service disabled or location permission denied';
+          });
+        }
+        return;
+      }
+      if (!mounted) return;
+      final client = context.read<ApiClient>();
+      for (final p in activePickups) {
+        final pid = p['pickupId']?.toString() ?? p['id']?.toString() ?? '';
+        if (pid.isNotEmpty) {
+          try {
+            final res = await client.post(
+              ApiConfig.receiverLocationUrl(pid),
+              body: {
+                'latitude': pos.latitude,
+                'longitude': pos.longitude,
+                'speed': pos.speed,
+                'heading': pos.heading,
+                'phase': 'APPROACH',
+              },
+            );
+            if (mounted && res is Map<String, dynamic>) {
+              setState(() {
+                _lastLocationUpdateTime = DateTime.now();
+                _trackingError = null;
+                _trackingData[pid] = {
+                  ...?_trackingData[pid],
+                  'distanceMeters': res['distanceMeters'],
+                  'distanceToTargetMeters': res['distanceMeters'],
+                  'withinGeofence': res['withinGeofence'],
+                  'locationUpdatedAt': DateTime.now().toIso8601String(),
+                };
+              });
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _openDonorNavigation(num? donorLat, num? donorLng, String donorName) async {
+    if (donorLat == null || donorLng == null ||
+        donorLat < -90.0 || donorLat > 90.0 ||
+        donorLng < -180.0 || donorLng > 180.0 ||
+        (donorLat == 0.0 && donorLng == 0.0)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Donor pickup location coordinates are missing or invalid.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+      return;
+    }
+
+    final receiverPos = await DeviceHardwareService.getCurrentLocation();
+    final launched = await DeviceHardwareService.openTurnByTurnNavigation(
+      latitude: donorLat.toDouble(),
+      longitude: donorLng.toDouble(),
+      originLatitude: receiverPos?.latitude,
+      originLongitude: receiverPos?.longitude,
+      destinationLabel: donorName,
+    );
+
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not launch maps application. Please check if Google Maps or a web browser is installed.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+
 
   Future<void> _loadPickups() async {
     setState(() {
@@ -100,6 +250,8 @@ class _ReceiverPickupsScreenState extends State<ReceiverPickupsScreen> {
           }
         }
       }
+
+      _startGpsStreamingIfActive();
     } on ApiException catch (e) {
       setState(() {
         _errorMessage = e.message;
@@ -183,56 +335,17 @@ class _ReceiverPickupsScreenState extends State<ReceiverPickupsScreen> {
     }
   }
 
-  // ─── STREAM LIVE LOCATION UPDATE ───
-  Future<void> _sendLiveLocationUpdate(String pickupId) async {
-    final client = context.read<ApiClient>();
-    try {
-      final pos = await DeviceHardwareService.getCurrentLocation();
-      if (pos == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Device location currently unavailable')),
-          );
-        }
-        return;
-      }
-
-      final res = await client.post(
-        ApiConfig.receiverLocationUrl(pickupId),
-        body: {
-          'latitude': pos.latitude,
-          'longitude': pos.longitude,
-          'speed': pos.speed,
-          'heading': pos.heading,
-          'phase': 'APPROACH',
-        },
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Location updated. Distance to donor: ${res['distanceMeters'] != null ? '${(res['distanceMeters'] as num).toInt()}m' : 'computed'}',
-            ),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-        _loadTrackingInfo(pickupId);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to stream location: $e'), backgroundColor: AppColors.error),
-        );
-      }
-    }
-  }
-
   // ─── STEP 2: CONFIRM REACHED DONOR LOCATION ───
   Future<void> _confirmReachedLocation(String pickupId) async {
+    _gpsStreamTimer?.cancel();
+    _gpsStreamTimer = null;
+    final client = context.read<ApiClient>();
+    final trackingService = context.read<PickupLiveTrackingService?>();
+    try {
+      await trackingService?.stopPublishingLocation();
+    } catch (_) {}
     setState(() => _loading = true);
     try {
-      final client = context.read<ApiClient>();
       final pos = await DeviceHardwareService.getCurrentLocation();
       final body = pos != null
           ? {
@@ -1014,9 +1127,9 @@ class _ReceiverPickupsScreenState extends State<ReceiverPickupsScreen> {
                               final inspectionRejected = item['inspectionRejected'] == true;
                               final inspectionNotes = item['inspectionNotes']?.toString() ?? '';
                               final tracking = _trackingData[pickupId];
-                              final scheduled = item['scheduledAt'] != null
-                                  ? DateFormat('MMM d, h:mm a').format(DateTime.parse(item['scheduledAt'].toString()).toLocal())
-                                  : 'Scheduled';
+                              final donorLat = (item['donorLatitude'] ?? item['donation']?['latitude'] ?? tracking?['donorLatitude']) as num?;
+                              final donorLng = (item['donorLongitude'] ?? item['donation']?['longitude'] ?? tracking?['donorLongitude']) as num?;
+                              final scheduled = AppDateFormatter.formatDateTime(item['scheduledAt'], fallback: 'Scheduled');
 
                               return Card(
                                 elevation: 2,
@@ -1086,35 +1199,61 @@ class _ReceiverPickupsScreenState extends State<ReceiverPickupsScreen> {
                                         ],
                                       ),
 
-                                      // Live tracking breadcrumb box if active
-                                      if ((status == 'EN_ROUTE_TO_PICKUP' || status == 'IN_TRANSIT') && tracking != null) ...[
+                                      // Live tracking status indicator for EN_ROUTE_TO_PICKUP
+                                      if (status == 'EN_ROUTE_TO_PICKUP') ...[
                                         const SizedBox(height: 12),
                                         Container(
-                                          padding: const EdgeInsets.all(10),
+                                          padding: const EdgeInsets.all(12),
                                           decoration: BoxDecoration(
-                                            color: Colors.blue.shade50,
+                                            color: Colors.green.shade50,
                                             borderRadius: BorderRadius.circular(8),
-                                            border: Border.all(color: Colors.blue.shade200),
+                                            border: Border.all(color: Colors.green.shade200),
                                           ),
                                           child: Row(
                                             children: [
-                                              const Icon(Icons.navigation, color: Colors.blue, size: 18),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
-                                                  () {
-                                                    final dist = (tracking['distanceToTargetMeters'] ?? tracking['distanceMeters']) as num?;
-                                                    if (dist != null) {
-                                                      return 'Distance to destination: ${dist.toInt()} m';
-                                                    }
-                                                    return 'Live GPS tracking active';
-                                                  }(),
-                                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue),
+                                              Container(
+                                                width: 10,
+                                                height: 10,
+                                                decoration: const BoxDecoration(
+                                                  color: AppColors.success,
+                                                  shape: BoxShape.circle,
                                                 ),
                                               ),
-                                              TextButton(
-                                                onPressed: () => _sendLiveLocationUpdate(pickupId),
-                                                child: const Text('Update GPS', style: TextStyle(fontSize: 12)),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    const Text(
+                                                      'Live GPS Tracking Active',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: AppColors.success,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      () {
+                                                        if (_trackingError != null) {
+                                                          return _trackingError!;
+                                                        }
+                                                        final dist = (tracking?['distanceToTargetMeters'] ?? tracking?['distanceMeters']) as num?;
+                                                        final timeStr = _lastLocationUpdateTime != null
+                                                            ? AppDateFormatter.formatTime(_lastLocationUpdateTime!)
+                                                            : 'Just now';
+                                                        if (dist != null && dist > 0) {
+                                                          if (dist >= 1000) {
+                                                            return 'Updated $timeStr • ${(dist / 1000).toStringAsFixed(1)} km to donor';
+                                                          }
+                                                          return 'Updated $timeStr • ${dist.toInt()} m to donor';
+                                                        }
+                                                        return 'Updated $timeStr • Transmitting location to donor';
+                                                      }(),
+                                                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
                                             ],
                                           ),
@@ -1144,9 +1283,9 @@ class _ReceiverPickupsScreenState extends State<ReceiverPickupsScreen> {
                                           children: [
                                             Expanded(
                                               child: OutlinedButton.icon(
-                                                icon: const Icon(Icons.my_location, size: 18),
-                                                label: const Text('Stream GPS'),
-                                                onPressed: () => _sendLiveLocationUpdate(pickupId),
+                                                icon: const Icon(Icons.navigation, size: 18),
+                                                label: const Text('Navigate to Donor'),
+                                                onPressed: () => _openDonorNavigation(donorLat, donorLng, donor),
                                               ),
                                             ),
                                             const SizedBox(width: 8),

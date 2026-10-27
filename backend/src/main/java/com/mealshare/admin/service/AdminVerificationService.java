@@ -41,6 +41,7 @@ public class AdminVerificationService {
         this(receiverOrganizationRepository, null, userRepository, auditService);
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
     public AdminVerificationService(
             ReceiverOrganizationRepository receiverOrganizationRepository,
             DonorProfileRepository donorProfileRepository,
@@ -95,7 +96,7 @@ public class AdminVerificationService {
         return usersPage.map(u -> {
             if (u.getRole() == UserRole.DONOR) {
                 return donorProfileRepository.findByUserId(u.getId())
-                        .map(AdminVerificationResponse::fromEntity)
+                        .map(dp -> AdminVerificationResponse.fromEntity(dp, u))
                         .orElseGet(() -> new AdminVerificationResponse(
                                 u.getId(),
                                 u.getId(),
@@ -119,7 +120,7 @@ public class AdminVerificationService {
                         ));
             } else {
                 return receiverOrganizationRepository.findByUserId(u.getId())
-                        .map(AdminVerificationResponse::fromEntity)
+                        .map(ro -> AdminVerificationResponse.fromEntity(ro, u))
                         .orElseGet(() -> new AdminVerificationResponse(
                                 u.getId(),
                                 u.getId(),
@@ -186,12 +187,35 @@ public class AdminVerificationService {
         String rejectionReason = request.rejectionReason();
         String actionRequiredNotes = request.actionRequiredNotes() != null ? request.actionRequiredNotes() : request.notes();
 
+        if ("REJECTED".equals(newStatus)) {
+            if (rejectionReason == null || rejectionReason.isBlank()) {
+                throw new IllegalArgumentException("A rejection reason is required when rejecting verification");
+            }
+        }
+
+        if ("ACTION_REQUIRED".equals(newStatus)) {
+            if (actionRequiredNotes == null || actionRequiredNotes.isBlank()) {
+                throw new IllegalArgumentException("Action required notes or instructions are required when requesting changes");
+            }
+        }
+
         Optional<ReceiverOrganization> orgOpt = receiverOrganizationRepository.findById(id);
         if (orgOpt.isPresent()) {
             ReceiverOrganization org = orgOpt.get();
+            if ("APPROVED".equals(newStatus) && org.getProfileStatus() != com.mealshare.user.ProfileStatus.COMPLETE) {
+                throw new IllegalStateException("Cannot approve verification: profile is incomplete and not ready for review");
+            }
             org.setVerificationStatus(newStatus);
-            if (rejectionReason != null) org.setRejectionReason(rejectionReason);
-            if (actionRequiredNotes != null) org.setActionRequiredNotes(actionRequiredNotes);
+            if ("APPROVED".equals(newStatus)) {
+                org.setRejectionReason(null);
+                org.setActionRequiredNotes(null);
+            } else if ("REJECTED".equals(newStatus)) {
+                org.setRejectionReason(rejectionReason);
+                org.setActionRequiredNotes(null);
+            } else if ("ACTION_REQUIRED".equals(newStatus)) {
+                org.setActionRequiredNotes(actionRequiredNotes);
+                org.setRejectionReason(null);
+            }
             org.setVerifiedAt(Instant.now());
             org.setVerifiedBy(adminUid);
             org = receiverOrganizationRepository.save(org);
@@ -219,13 +243,24 @@ public class AdminVerificationService {
             Optional<DonorProfile> donorOpt = donorProfileRepository.findById(id);
             if (donorOpt.isPresent()) {
                 DonorProfile donor = donorOpt.get();
+                if ("APPROVED".equals(newStatus) && donor.getProfileStatus() != com.mealshare.user.ProfileStatus.COMPLETE) {
+                    throw new IllegalStateException("Cannot approve verification: profile is incomplete and not ready for review");
+                }
                 try {
                     donor.setVerificationStatus(VerificationStatus.valueOf(newStatus));
                 } catch (Exception e) {
                     donor.setVerificationStatus(VerificationStatus.PENDING);
                 }
-                if (rejectionReason != null) donor.setRejectionReason(rejectionReason);
-                if (actionRequiredNotes != null) donor.setActionRequiredNotes(actionRequiredNotes);
+                if ("APPROVED".equals(newStatus)) {
+                    donor.setRejectionReason(null);
+                    donor.setActionRequiredNotes(null);
+                } else if ("REJECTED".equals(newStatus)) {
+                    donor.setRejectionReason(rejectionReason);
+                    donor.setActionRequiredNotes(null);
+                } else if ("ACTION_REQUIRED".equals(newStatus)) {
+                    donor.setActionRequiredNotes(actionRequiredNotes);
+                    donor.setRejectionReason(null);
+                }
                 donor.setVerifiedAt(Instant.now());
                 donor.setVerifiedBy(adminUid);
                 donor = donorProfileRepository.save(donor);
@@ -253,6 +288,9 @@ public class AdminVerificationService {
         Optional<User> userOpt = userRepository.findById(id);
         if (userOpt.isPresent()) {
             User u = userOpt.get();
+            if ("APPROVED".equals(newStatus) && u.getProfileStatus() != com.mealshare.user.ProfileStatus.COMPLETE) {
+                throw new IllegalStateException("Cannot approve verification: profile is incomplete and not ready for review");
+            }
             updateUserVerificationState(u, newStatus, rejectionReason, actionRequiredNotes, adminUid);
             u = userRepository.save(u);
 
@@ -260,11 +298,22 @@ public class AdminVerificationService {
                 Optional<DonorProfile> dp = donorProfileRepository.findByUserId(u.getId());
                 if (dp.isPresent()) {
                     DonorProfile donor = dp.get();
+                    if ("APPROVED".equals(newStatus) && donor.getProfileStatus() != com.mealshare.user.ProfileStatus.COMPLETE) {
+                        throw new IllegalStateException("Cannot approve verification: profile is incomplete and not ready for review");
+                    }
                     try {
                         donor.setVerificationStatus(VerificationStatus.valueOf(newStatus));
                     } catch (Exception ignored) {}
-                    if (rejectionReason != null) donor.setRejectionReason(rejectionReason);
-                    if (actionRequiredNotes != null) donor.setActionRequiredNotes(actionRequiredNotes);
+                    if ("APPROVED".equals(newStatus)) {
+                        donor.setRejectionReason(null);
+                        donor.setActionRequiredNotes(null);
+                    } else if ("REJECTED".equals(newStatus)) {
+                        donor.setRejectionReason(rejectionReason);
+                        donor.setActionRequiredNotes(null);
+                    } else if ("ACTION_REQUIRED".equals(newStatus)) {
+                        donor.setActionRequiredNotes(actionRequiredNotes);
+                        donor.setRejectionReason(null);
+                    }
                     donor.setVerifiedAt(Instant.now());
                     donor.setVerifiedBy(adminUid);
                     donor = donorProfileRepository.save(donor);
@@ -274,9 +323,20 @@ public class AdminVerificationService {
                 Optional<ReceiverOrganization> ro = receiverOrganizationRepository.findByUserId(u.getId());
                 if (ro.isPresent()) {
                     ReceiverOrganization org = ro.get();
+                    if ("APPROVED".equals(newStatus) && org.getProfileStatus() != com.mealshare.user.ProfileStatus.COMPLETE) {
+                        throw new IllegalStateException("Cannot approve verification: profile is incomplete and not ready for review");
+                    }
                     org.setVerificationStatus(newStatus);
-                    if (rejectionReason != null) org.setRejectionReason(rejectionReason);
-                    if (actionRequiredNotes != null) org.setActionRequiredNotes(actionRequiredNotes);
+                    if ("APPROVED".equals(newStatus)) {
+                        org.setRejectionReason(null);
+                        org.setActionRequiredNotes(null);
+                    } else if ("REJECTED".equals(newStatus)) {
+                        org.setRejectionReason(rejectionReason);
+                        org.setActionRequiredNotes(null);
+                    } else if ("ACTION_REQUIRED".equals(newStatus)) {
+                        org.setActionRequiredNotes(actionRequiredNotes);
+                        org.setRejectionReason(null);
+                    }
                     org.setVerifiedAt(Instant.now());
                     org.setVerifiedBy(adminUid);
                     org = receiverOrganizationRepository.save(org);

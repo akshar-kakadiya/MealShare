@@ -38,44 +38,64 @@ ALTER TABLE receiver_organizations ADD COLUMN IF NOT EXISTS verified_at TIMESTAM
 ALTER TABLE receiver_organizations ADD COLUMN IF NOT EXISTS verified_by VARCHAR(128);
 
 -- 4. Normalize and backfill safe defaults for existing users and profiles
--- Existing accounts are considered pre-verified and complete. Normalize legacy 'VERIFIED' to 'APPROVED'.
+-- Existing active accounts are normalized from legacy 'VERIFIED' to 'APPROVED'. Genuinely PENDING accounts are preserved.
 UPDATE users
-SET profile_status = 'COMPLETE',
+SET profile_status = CASE
+        WHEN status = 'ACTIVE' THEN 'COMPLETE'
+        ELSE profile_status
+    END,
     verification_status = CASE
         WHEN verification_status = 'VERIFIED' THEN 'APPROVED'
         WHEN verification_status IN ('APPROVED', 'REJECTED', 'ACTION_REQUIRED') THEN verification_status
-        ELSE 'APPROVED'
+        WHEN status = 'ACTIVE' THEN 'APPROVED'
+        ELSE 'PENDING'
     END,
     category = COALESCE(category, CASE
         WHEN role = 'DONOR' THEN 'HOTEL_RESTAURANT'
         WHEN role = 'RECEIVER' THEN 'NGO'
         ELSE 'ADMIN'
     END),
-    verified_at = COALESCE(verified_at, NOW())
-WHERE profile_status IS NULL OR profile_status = 'INCOMPLETE' 
-   OR verification_status IS NULL OR verification_status IN ('PENDING', 'VERIFIED');
+    verified_at = CASE
+        WHEN status = 'ACTIVE' OR verification_status = 'VERIFIED' THEN COALESCE(verified_at, NOW())
+        ELSE NULL
+    END
+WHERE verification_status = 'VERIFIED'
+   OR (status = 'ACTIVE' AND (verification_status IS NULL OR verification_status = 'PENDING'))
+   OR (category IS NULL);
 
 UPDATE donor_profiles
-SET profile_status = 'COMPLETE',
+SET profile_status = CASE
+        WHEN address_text IS NOT NULL AND address_text != 'Not Specified' AND latitude != 0.0 THEN 'COMPLETE'
+        ELSE profile_status
+    END,
     verification_status = CASE
         WHEN verification_status = 'VERIFIED' THEN 'APPROVED'
         WHEN verification_status IN ('APPROVED', 'REJECTED', 'ACTION_REQUIRED') THEN verification_status
-        ELSE 'APPROVED'
+        WHEN user_id IN (SELECT id FROM users WHERE status = 'ACTIVE') THEN 'APPROVED'
+        ELSE 'PENDING'
     END,
-    verified_at = COALESCE(verified_at, NOW())
-WHERE profile_status IS NULL OR profile_status = 'INCOMPLETE' 
-   OR verification_status IS NULL OR verification_status IN ('PENDING', 'VERIFIED');
+    verified_at = CASE
+        WHEN user_id IN (SELECT id FROM users WHERE status = 'ACTIVE') THEN COALESCE(verified_at, NOW())
+        ELSE NULL
+    END
+WHERE verification_status = 'VERIFIED' OR verification_status IS NULL;
 
 UPDATE receiver_organizations
-SET profile_status = 'COMPLETE',
+SET profile_status = CASE
+        WHEN address_text IS NOT NULL AND address_text != 'Not Specified' THEN 'COMPLETE'
+        ELSE profile_status
+    END,
     verification_status = CASE
         WHEN verification_status = 'VERIFIED' THEN 'APPROVED'
         WHEN verification_status IN ('APPROVED', 'REJECTED', 'ACTION_REQUIRED') THEN verification_status
-        ELSE 'APPROVED'
+        WHEN user_id IN (SELECT id FROM users WHERE status = 'ACTIVE') THEN 'APPROVED'
+        ELSE 'PENDING'
     END,
-    verified_at = COALESCE(verified_at, NOW())
-WHERE profile_status IS NULL OR profile_status = 'INCOMPLETE' 
-   OR verification_status IS NULL OR verification_status IN ('PENDING', 'VERIFIED');
+    verified_at = CASE
+        WHEN user_id IN (SELECT id FROM users WHERE status = 'ACTIVE') THEN COALESCE(verified_at, NOW())
+        ELSE NULL
+    END
+WHERE verification_status = 'VERIFIED' OR verification_status IS NULL;
 
 -- 5. Add / Update check constraints (safely after data normalization)
 DO $$

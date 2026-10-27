@@ -12,6 +12,8 @@ spring:
 firebase:
   credentials:
     path:
+  database:
+    url: ${FIREBASE_DATABASE_URL:https://mealshare-100-default-rtdb.firebaseio.com}
 
 mealshare:
   pickup:
@@ -19,3 +21,10 @@ mealshare:
       length: 6
       expiry-minutes: 10
       max-attempts: 5
+  donation:
+    expiry-cron: "-"
+
+google:
+  maps:
+    api-key: test-api-key
+    routes-url: https://routes.googleapis.com/directions/v2:computeRoutes

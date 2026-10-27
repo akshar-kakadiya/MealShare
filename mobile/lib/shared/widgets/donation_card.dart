@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../mock/models.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
+import '../utils/date_formatter.dart';
 import 'status_chip.dart';
 
 class DonationCard extends StatelessWidget {
@@ -89,7 +90,9 @@ class DonationCard extends StatelessWidget {
                         ),
                         _MetaItem(
                           icon: Icons.schedule,
-                          text: donation.consumeBefore,
+                          text: AppDateFormatter.formatConsumeBefore(
+                            donation.consumeBeforeTime ?? donation.consumeBefore,
+                          ),
                         ),
                         if (showDistance && donation.distance != null)
                           _MetaItem(

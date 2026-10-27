@@ -3,6 +3,7 @@ package com.mealshare.donor.request;
 import com.mealshare.common.dto.PaginatedResponse;
 import com.mealshare.donor.request.dto.ApproveDonationRequestResponse;
 import com.mealshare.donor.request.dto.DonorDonationRequestResponse;
+import com.mealshare.donor.request.dto.ReceiverProfilePreviewDto;
 import com.mealshare.donor.request.dto.RejectDonationRequestDto;
 import com.mealshare.security.FirebasePrincipal;
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,6 +43,18 @@ public class DonorRequestController {
                 principal.uid(), donationId, pageable
         );
         return ResponseEntity.ok(PaginatedResponse.from(page));
+    }
+
+    @GetMapping("/requests/{requestId}/receiver-profile")
+    @Operation(summary = "View receiver organization profile preview for request",
+               description = "Enables donors to inspect genuine receiver organization profile details before approving or rejecting a request")
+    public ResponseEntity<ReceiverProfilePreviewDto> getReceiverProfilePreview(
+            @AuthenticationPrincipal FirebasePrincipal principal,
+            @PathVariable UUID requestId) {
+        ReceiverProfilePreviewDto response = donorRequestService.getReceiverProfilePreview(
+                principal.uid(), requestId
+        );
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/requests/{requestId}/approve")

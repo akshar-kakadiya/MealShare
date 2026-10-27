@@ -27,7 +27,7 @@ public record AdminUserResponse(
                 user.getPhone(),
                 user.getRole(),
                 user.getStatus(),
-                user.getStatus() == UserStatus.ACTIVE,
+                user.getStatus() == UserStatus.ACTIVE && user.getVerificationStatus() == com.mealshare.user.VerificationStatus.APPROVED,
                 organization,
                 user.getCreatedAt(),
                 user.getUpdatedAt()

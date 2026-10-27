@@ -4,6 +4,7 @@ import com.mealshare.common.dto.PaginatedResponse;
 import com.mealshare.pickup.Pickup;
 import com.mealshare.pickup.PickupService;
 import com.mealshare.pickup.dto.*;
+import com.mealshare.pickup.routing.PickupRoutingService;
 import com.mealshare.security.FirebasePrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,9 +28,11 @@ import java.util.UUID;
 public class ReceiverPickupController {
 
     private final PickupService pickupService;
+    private final PickupRoutingService pickupRoutingService;
 
-    public ReceiverPickupController(PickupService pickupService) {
+    public ReceiverPickupController(PickupService pickupService, PickupRoutingService pickupRoutingService) {
         this.pickupService = pickupService;
+        this.pickupRoutingService = pickupRoutingService;
     }
 
     @GetMapping
@@ -145,6 +148,17 @@ public class ReceiverPickupController {
         return ResponseEntity.ok(tracking);
     }
 
+    @GetMapping("/{pickupId}/route")
+    @Operation(summary = "Get road-following route for receiver pickup journey", description = "Calculates actual road path, travel distance, and ETA via Google Maps Routes API")
+    public ResponseEntity<PickupRouteDto> getPickupRoute(
+            @AuthenticationPrincipal FirebasePrincipal principal,
+            @PathVariable UUID pickupId,
+            @RequestParam(required = false) Double lat,
+            @RequestParam(required = false) Double lng) {
+        PickupRouteDto route = pickupRoutingService.getRoute(principal.uid(), pickupId, lat, lng);
+        return ResponseEntity.ok(route);
+    }
+
     // Backwards-compatibility endpoints
     @PostMapping("/{pickupId}/verify-otp")
     @Operation(summary = "Verify OTP (Legacy)")
@@ -164,6 +178,17 @@ public class ReceiverPickupController {
             @PathVariable UUID pickupId,
             HttpServletRequest httpRequest) {
         PickupResponse response = pickupService.completePickup(principal.uid(), pickupId, httpRequest);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{pickupId}/cancel")
+    @Operation(summary = "Cancel pickup", description = "Receiver cancels pickup journey before completion")
+    public ResponseEntity<PickupResponse> cancelPickup(
+            @AuthenticationPrincipal FirebasePrincipal principal,
+            @PathVariable UUID pickupId,
+            @RequestParam(required = false) String reason,
+            HttpServletRequest httpRequest) {
+        PickupResponse response = pickupService.cancelPickup(principal.uid(), pickupId, reason, httpRequest);
         return ResponseEntity.ok(response);
     }
 }

@@ -46,7 +46,8 @@ public class ReceiverOrganizationService {
             org.setServiceLatitude(latitude != null ? latitude : 12.9716);
             org.setServiceLongitude(longitude != null ? longitude : 77.5946);
             org.setServiceRadiusMeters(10000.0);
-            org.setVerificationStatus("VERIFIED");
+            org.setVerificationStatus("PENDING");
+            org.setProfileStatus(com.mealshare.user.ProfileStatus.INCOMPLETE);
             org.setBeneficiaryCapacity(50);
             org.setRatingAverage(5.0);
             return receiverOrganizationRepository.save(org);
@@ -101,6 +102,9 @@ public class ReceiverOrganizationService {
         if (isComplete) {
             org.setProfileStatus(com.mealshare.user.ProfileStatus.COMPLETE);
             user.setProfileStatus(com.mealshare.user.ProfileStatus.COMPLETE);
+        } else {
+            org.setProfileStatus(com.mealshare.user.ProfileStatus.INCOMPLETE);
+            user.setProfileStatus(com.mealshare.user.ProfileStatus.INCOMPLETE);
         }
 
         // Resubmit verification if previously ACTION_REQUIRED or REJECTED

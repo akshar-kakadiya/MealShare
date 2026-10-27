@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../auth/auth_service.dart';
 import '../mock/app_state.dart';
+import '../location/location_picker.dart';
 import '../shared/api_client.dart';
 import '../shared/device_hardware_service.dart';
 import '../theme/app_colors.dart';
@@ -58,7 +59,6 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
     double? currentLon = user.longitude ?? 77.5946;
 
     bool saving = false;
-    bool gettingGps = false;
     bool uploadingPhoto = false;
     String? errorMsg;
 
@@ -264,27 +264,28 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                                   style: const TextStyle(fontSize: 13),
                                 ),
                               ),
-                              TextButton.icon(
-                                onPressed: gettingGps
-                                    ? null
-                                    : () async {
-                                        setDialogState(() => gettingGps = true);
-                                        try {
-                                          final pos = await DeviceHardwareService.getCurrentLocation();
-                                          if (pos != null) {
-                                            setDialogState(() {
-                                              currentLat = pos.latitude;
-                                              currentLon = pos.longitude;
-                                            });
-                                          }
-                                        } finally {
-                                          setDialogState(() => gettingGps = false);
-                                        }
-                                      },
-                                icon: gettingGps
-                                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                                    : const Icon(Icons.gps_fixed, size: 16),
-                                label: const Text('Update GPS', style: TextStyle(fontSize: 12)),
+                              OutlinedButton.icon(
+                                onPressed: () async {
+                                  final locResult = await LocationPicker.pickLocation(
+                                    ctx,
+                                    initialLatitude: currentLat,
+                                    initialLongitude: currentLon,
+                                    initialAddress: addressCtrl.text,
+                                  );
+                                  if (locResult != null) {
+                                    setDialogState(() {
+                                      currentLat = locResult.latitude;
+                                      currentLon = locResult.longitude;
+                                      addressCtrl.text = locResult.fullAddress;
+                                    });
+                                  }
+                                },
+                                icon: const Icon(Icons.map_outlined, size: 16),
+                                label: const Text('Choose on Map', style: TextStyle(fontSize: 12)),
+                                style: OutlinedButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                ),
                               ),
                             ],
                           ),

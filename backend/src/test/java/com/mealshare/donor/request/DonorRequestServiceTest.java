@@ -313,7 +313,7 @@ class DonorRequestServiceTest {
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> donorRequestService.approveRequest("donor-uid", reqId, null));
-        assertTrue(ex.getMessage().contains("consume-before deadline"));
+        assertTrue(ex.getMessage().contains("availability deadline"));
     }
 
     @Test
@@ -687,5 +687,77 @@ class DonorRequestServiceTest {
         assertEquals(50.0, donation.getAllocatedQuantity());
         assertEquals(0.0, donation.getRemainingQuantity());
         assertEquals(DonationStatus.APPROVED, donation.getStatus());
+    }
+
+    @Test
+    void getReceiverProfilePreview_authorizedDonor_returnsProfileDetails() {
+        UUID reqId = UUID.randomUUID();
+        when(userRepository.findByFirebaseUid("donor-uid")).thenReturn(Optional.of(donorUser));
+        when(donorProfileService.findByUserId(donorUser.getId())).thenReturn(Optional.of(donorProfile));
+
+        User receiverUser = new User();
+        receiverUser.setPhone("+919876543210");
+        receiverUser.setEmail("contact@hopefoundation.org");
+
+        ReceiverOrganization org = new ReceiverOrganization();
+        org.setId(UUID.randomUUID());
+        org.setUser(receiverUser);
+        org.setOrgName("Hope Community Shelter");
+        org.setOrgType("COMMUNITY_SHELTER");
+        org.setVerificationStatus("VERIFIED");
+        org.setBeneficiaryCapacity(120);
+        org.setRatingAverage(4.8);
+        org.setAddressText("123 Relief Road, Indiranagar");
+        org.setServiceLatitude(12.9716);
+        org.setServiceLongitude(77.5946);
+        org.setDescription("Dedicated to providing nutritious meals to urban destitute communities.");
+
+        DonationRequest req = new DonationRequest();
+        req.setId(reqId);
+        req.setDonation(donation);
+        req.setReceiverOrganization(org);
+
+        when(donationRequestRepository.findById(reqId)).thenReturn(Optional.of(req));
+
+        var preview = donorRequestService.getReceiverProfilePreview("donor-uid", reqId);
+
+        assertNotNull(preview);
+        assertEquals("Hope Community Shelter", preview.orgName());
+        assertEquals("COMMUNITY_SHELTER", preview.orgType());
+        assertEquals("VERIFIED", preview.verificationStatus());
+        assertEquals("+919876543210", preview.phone());
+        assertEquals("contact@hopefoundation.org", preview.email());
+        assertEquals(120, preview.beneficiaryCapacity());
+        assertEquals(4.8, preview.ratingAverage());
+    }
+
+    @Test
+    void getReceiverProfilePreview_unauthorizedDonor_throwsAccessDenied() {
+        UUID reqId = UUID.randomUUID();
+        User strangerDonor = new User();
+        strangerDonor.setId(UUID.randomUUID());
+        strangerDonor.setRole(UserRole.DONOR);
+        strangerDonor.setStatus(UserStatus.ACTIVE);
+
+        DonorProfile otherProfile = new DonorProfile();
+        otherProfile.setId(UUID.randomUUID());
+        otherProfile.setUser(strangerDonor);
+
+        when(userRepository.findByFirebaseUid("stranger-uid")).thenReturn(Optional.of(strangerDonor));
+        when(donorProfileService.findByUserId(strangerDonor.getId())).thenReturn(Optional.of(otherProfile));
+
+        ReceiverOrganization org = new ReceiverOrganization();
+        org.setId(UUID.randomUUID());
+
+        DonationRequest req = new DonationRequest();
+        req.setId(reqId);
+        req.setDonation(donation); // owned by donorProfile != otherProfile
+        req.setReceiverOrganization(org);
+
+        when(donationRequestRepository.findById(reqId)).thenReturn(Optional.of(req));
+
+        assertThrows(AccessDeniedException.class, () ->
+                donorRequestService.getReceiverProfilePreview("stranger-uid", reqId)
+        );
     }
 }

@@ -19,6 +19,12 @@ dependencies:
   intl: ^0.20.2
   geolocator: ^14.1.1
   image_picker: ^1.2.4
+  url_launcher: ^6.3.1
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  web_socket_channel: ^3.0.1
+  google_maps_flutter: ^2.18.1
+  firebase_database: ^11.3.10
 
 dev_dependencies:
   flutter_test:

@@ -23,6 +23,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   UserRole _selectedRole = UserRole.donor;
   String _selectedCategory = 'HOTEL_RESTAURANT';
   bool _loading = false;
+  bool _obscurePassword = true;
   String? _error;
 
   static const Map<String, String> _donorCategories = {
@@ -304,11 +305,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 // Password field
                 TextFormField(
                   controller: _passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
                     labelText: 'Password',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.lock_outlined),
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.lock_outlined),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                      ),
+                      tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                    ),
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Password is required';
@@ -335,7 +347,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 16),
 
                 TextButton(
-                  onPressed: () => context.pop(),
+                  onPressed: () {
+                    if (context.canPop()) {
+                      context.pop();
+                    } else {
+                      context.go('/login');
+                    }
+                  },
                   child: const Text('Already have an account? Sign In'),
                 ),
               ],

@@ -66,7 +66,7 @@ public class UserService {
         user.setPhone(request.phone());
         user.setRole(request.role());
         user.setCategory(request.category());
-        user.setStatus(UserStatus.ACTIVE);
+        user.setStatus(UserStatus.PENDING_VERIFICATION);
         user.setProfileStatus(ProfileStatus.INCOMPLETE);
         user.setVerificationStatus(VerificationStatus.PENDING);
 

@@ -35,8 +35,10 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import com.mealshare.pickup.dto.LocationUpdateDto;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -823,5 +825,59 @@ class PickupServiceTest {
         assertThrows(IllegalStateException.class, () ->
                 pickupService.getOtpForDonor("donor-uid", pickup.getId(), null)
         );
+    }
+
+    @Test
+    void recordLocationUpdate_whenTrackingInactive_throwsIllegalState() {
+        pickup.setTrackingActive(false);
+        when(userRepository.findByFirebaseUid("receiver-uid")).thenReturn(Optional.of(receiverUser));
+        when(receiverOrganizationRepository.findByUserId(receiverUser.getId())).thenReturn(Optional.of(receiverOrg));
+        when(pickupRepository.findById(pickup.getId())).thenReturn(Optional.of(pickup));
+
+        LocationUpdateDto dto = new LocationUpdateDto(12.9716, 77.5946, 10.0, 45.0);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                pickupService.recordLocationUpdate("receiver-uid", pickup.getId(), dto, null)
+        );
+        assertTrue(ex.getMessage().contains("tracking is not active"));
+    }
+
+    @Test
+    void recordLocationUpdate_whenNotInTransitJourney_throwsIllegalState() {
+        pickup.setTrackingActive(true);
+        pickup.setStatus(PickupStatus.PICKUP_PENDING);
+        when(userRepository.findByFirebaseUid("receiver-uid")).thenReturn(Optional.of(receiverUser));
+        when(receiverOrganizationRepository.findByUserId(receiverUser.getId())).thenReturn(Optional.of(receiverOrg));
+        when(pickupRepository.findById(pickup.getId())).thenReturn(Optional.of(pickup));
+
+        LocationUpdateDto dto = new LocationUpdateDto(12.9716, 77.5946, 10.0, 45.0);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                pickupService.recordLocationUpdate("receiver-uid", pickup.getId(), dto, null)
+        );
+        assertTrue(ex.getMessage().contains("only accepted during an active transit journey"));
+    }
+
+    @Test
+    void recordLocationUpdate_whenEnRoute_calculatesGeofence() {
+        pickup.setTrackingActive(true);
+        pickup.setStatus(PickupStatus.EN_ROUTE_TO_PICKUP);
+        donation.setLatitude(12.9716);
+        donation.setLongitude(77.5946);
+
+        when(userRepository.findByFirebaseUid("receiver-uid")).thenReturn(Optional.of(receiverUser));
+        when(receiverOrganizationRepository.findByUserId(receiverUser.getId())).thenReturn(Optional.of(receiverOrg));
+        when(pickupRepository.findById(pickup.getId())).thenReturn(Optional.of(pickup));
+        when(pickupRepository.save(any(Pickup.class))).thenAnswer(i -> i.getArgument(0));
+
+        // Location 50 meters away -> within geofence (200m)
+        LocationUpdateDto dto = new LocationUpdateDto(12.9716, 77.5946, 15.0, 90.0);
+        Map<String, Object> result = pickupService.recordLocationUpdate("receiver-uid", pickup.getId(), dto, null);
+
+        assertNotNull(result);
+        assertEquals(true, result.get("withinGeofence"));
+        assertEquals(PickupStatus.EN_ROUTE_TO_PICKUP, result.get("status"));
+        assertEquals(12.9716, pickup.getCurrentLatitude());
+        assertEquals(77.5946, pickup.getCurrentLongitude());
     }
 }

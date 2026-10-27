@@ -71,6 +71,68 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
               padding: const EdgeInsets.all(AppSpacing.lg),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
+                  if (state.isBackendConnecting)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(AppRadius.card),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              state.connectionErrorMessage ?? 'Connecting to MealShare backend...',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.blue.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (state.connectionErrorMessage != null && state.connectionErrorMessage!.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(AppRadius.card),
+                        border: Border.all(color: Colors.amber.shade300),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.cloud_off_outlined, color: Colors.amber.shade900, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              state.connectionErrorMessage!,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.amber.shade900,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _refreshData,
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  _buildVerificationStatusBanner(context, state),
+
                   // Impact Stats
                   Row(
                     children: [
@@ -219,6 +281,118 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
         label: const Text('New Donation'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
+      ),
+    );
+  }
+
+  Widget _buildVerificationStatusBanner(BuildContext context, AppState state) {
+    final user = state.currentUser;
+    final verStatus = user.verificationStatus.toUpperCase();
+    final profStatus = user.profileStatus.toUpperCase();
+
+    if (verStatus == 'APPROVED') {
+      return const SizedBox.shrink();
+    }
+
+    Color bgColor;
+    Color borderColor;
+    Color iconColor;
+    Color textColor;
+    IconData icon;
+    String title;
+    String subtitle;
+    String buttonText;
+
+    if (verStatus == 'ACTION_REQUIRED') {
+      bgColor = Colors.amber.shade50;
+      borderColor = Colors.amber.shade300;
+      iconColor = Colors.amber.shade800;
+      textColor = Colors.amber.shade900;
+      icon = Icons.warning_amber_rounded;
+      title = 'Action Required on Your Profile';
+      subtitle = (user.actionRequiredNotes != null && user.actionRequiredNotes!.isNotEmpty)
+          ? user.actionRequiredNotes!
+          : 'The administrator requested updates to your profile. Please review and update.';
+      buttonText = 'Update Profile';
+    } else if (verStatus == 'REJECTED') {
+      bgColor = Colors.red.shade50;
+      borderColor = Colors.red.shade200;
+      iconColor = Colors.red.shade700;
+      textColor = Colors.red.shade900;
+      icon = Icons.cancel_outlined;
+      title = 'Verification Rejected';
+      subtitle = (user.rejectionReason != null && user.rejectionReason!.isNotEmpty)
+          ? user.rejectionReason!
+          : 'Your verification was not approved. Please review the details.';
+      buttonText = 'View Profile';
+    } else {
+      bgColor = Colors.blue.shade50;
+      borderColor = Colors.blue.shade200;
+      iconColor = Colors.blue.shade700;
+      textColor = Colors.blue.shade900;
+      icon = Icons.hourglass_top_rounded;
+      if (profStatus == 'INCOMPLETE') {
+        title = 'Profile Incomplete';
+        subtitle = 'Complete your organization details so administrators can verify your account.';
+        buttonText = 'Complete Profile';
+      } else {
+        title = 'Verification Under Review';
+        subtitle = 'Your profile is submitted and currently waiting for administrator verification.';
+        buttonText = 'View Profile';
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: iconColor, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 12,
+              color: textColor.withValues(alpha: 0.9),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: SizedBox(
+              height: 32,
+              child: FilledButton.tonal(
+                onPressed: () => context.push('/donor/profile'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: Text(buttonText, style: const TextStyle(fontSize: 12)),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -19,10 +19,12 @@ import com.mealshare.receiver.ReceiverOrganizationRepository;
 import com.mealshare.receiver.request.DonationRequest;
 import com.mealshare.receiver.request.DonationRequestRepository;
 import com.mealshare.receiver.request.DonationRequestStatus;
+import com.mealshare.user.ProfileStatus;
 import com.mealshare.user.User;
 import com.mealshare.user.UserRepository;
 import com.mealshare.user.UserRole;
 import com.mealshare.user.UserStatus;
+import com.mealshare.user.VerificationStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -75,7 +77,9 @@ class AdminOperationsApiTest {
         );
         adminDonationService = new AdminDonationService(donationRepository, donationRequestRepository);
         adminRequestService = new AdminRequestService(donationRequestRepository, pickupRepository);
-        adminVerificationService = new AdminVerificationService(receiverOrganizationRepository, userRepository, auditService);
+        adminVerificationService = new AdminVerificationService(
+                receiverOrganizationRepository, donorProfileRepository, userRepository, auditService
+        );
         adminReportService = new AdminReportService(donationRepository, donationRequestRepository, pickupRepository, userRepository, donorProfileRepository);
         adminAuditLogService = new AdminAuditLogService(auditLogRepository);
     }
@@ -168,6 +172,63 @@ class AdminOperationsApiTest {
     }
 
     @Test
+    @DisplayName("AdminUserService removes user by deactivating status to SUSPENDED, rejecting verification, and recording audit event")
+    void testRemoveUserSuccess() {
+        UUID userId = UUID.randomUUID();
+        User user = new User();
+        user.setId(userId);
+        user.setName("Target User");
+        user.setFirebaseUid("target-firebase-uid");
+        user.setStatus(UserStatus.ACTIVE);
+        user.setVerificationStatus(VerificationStatus.APPROVED);
+        user.setRole(UserRole.DONOR);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        adminUserService.removeUser(userId, "admin-uid", null);
+
+        verify(userRepository).delete(user);
+        verify(userRepository).flush();
+        verify(auditService).logEvent(eq("admin-uid"), eq("ADMIN"), eq("USER_DELETED_PERMANENTLY"), eq("User"), eq(userId.toString()), any(), any());
+    }
+
+    @Test
+    @DisplayName("AdminUserService throws exception when administrator attempts to remove own account")
+    void testRemoveUserSelfRemovalFails() {
+        UUID userId = UUID.randomUUID();
+        User user = new User();
+        user.setId(userId);
+        user.setFirebaseUid("admin-uid");
+        user.setRole(UserRole.ADMIN);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                adminUserService.removeUser(userId, "admin-uid", null));
+        assertEquals("Cannot remove the currently authenticated administrator account.", ex.getMessage());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("AdminUserService throws exception when attempting to remove the last active admin")
+    void testRemoveUserLastAdminFails() {
+        UUID userId = UUID.randomUUID();
+        User user = new User();
+        user.setId(userId);
+        user.setFirebaseUid("other-admin-uid");
+        user.setRole(UserRole.ADMIN);
+        user.setStatus(UserStatus.ACTIVE);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.countByRoleAndStatus(UserRole.ADMIN, UserStatus.ACTIVE)).thenReturn(1L);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                adminUserService.removeUser(userId, "current-admin-uid", null));
+        assertEquals("Cannot remove the last active administrator account on the platform.", ex.getMessage());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("AdminDonationService computes remainingQuantity invariant correctly")
     void testDonationRemainingQuantityInvariant() {
         UUID donationId = UUID.randomUUID();
@@ -197,11 +258,13 @@ class AdminOperationsApiTest {
         User u = new User();
         u.setId(UUID.randomUUID());
         u.setStatus(UserStatus.PENDING_VERIFICATION);
+        u.setProfileStatus(ProfileStatus.COMPLETE);
 
         ReceiverOrganization org = new ReceiverOrganization();
         org.setId(orgId);
         org.setOrgName("Care Foundation");
         org.setVerificationStatus("PENDING");
+        org.setProfileStatus(ProfileStatus.COMPLETE);
         org.setUser(u);
 
         when(receiverOrganizationRepository.findById(orgId)).thenReturn(Optional.of(org));

@@ -5,5 +5,6 @@ public enum DonationRequestStatus {
     APPROVED,
     REJECTED,
     WITHDRAWN,
-    COMPLETED
+    COMPLETED,
+    EXPIRED
 }

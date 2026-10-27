@@ -77,14 +77,25 @@ public class OperationalPickupWorkflowE2ETest {
     @Autowired
     private UserRepository userRepository;
 
-    // Use seeded fixture UIDs from V2
-    private static final String DONOR_UID = "drekxkp9uXV2g16JioDrgu7uXSk2";
-    private static final String RECEIVER_UID = "pwvnvHgatoahwb9ndKfSM2TVFPG2";
+    private String donorUid = "drekxkp9uXV2g16JioDrgu7uXSk2";
+    private String receiverUid = "pwvnvHgatoahwb9ndKfSM2TVFPG2";
 
     @BeforeEach
     void setUp() throws Exception {
         FirebaseToken mockToken = mock(FirebaseToken.class);
         when(firebaseTokenValidator.verifyIdToken(anyString())).thenReturn(mockToken);
+
+        donorUid = userRepository.findAll().stream()
+                .filter(u -> u.getRole() == com.mealshare.user.UserRole.DONOR && u.getStatus() == com.mealshare.user.UserStatus.ACTIVE)
+                .map(com.mealshare.user.User::getFirebaseUid)
+                .findFirst()
+                .orElse("drekxkp9uXV2g16JioDrgu7uXSk2");
+
+        receiverUid = userRepository.findAll().stream()
+                .filter(u -> u.getRole() == com.mealshare.user.UserRole.RECEIVER && u.getStatus() == com.mealshare.user.UserStatus.ACTIVE)
+                .map(com.mealshare.user.User::getFirebaseUid)
+                .findFirst()
+                .orElse("pwvnvHgatoahwb9ndKfSM2TVFPG2");
     }
 
     @Test
@@ -109,7 +120,7 @@ public class OperationalPickupWorkflowE2ETest {
                 true,
                 "Prepared according to food safety guidelines"
         );
-        DonationResponse donationResponse = donationService.createDonation(DONOR_UID, createDto, request);
+        DonationResponse donationResponse = donationService.createDonation(donorUid, createDto, request);
         UUID donationId = donationResponse.id();
         assertThat(donationResponse.status()).isEqualTo(DonationStatus.AVAILABLE);
 
@@ -118,12 +129,12 @@ public class OperationalPickupWorkflowE2ETest {
                 20.0,
                 "Meals for community shelter beneficiaries"
         );
-        DonationRequestResponse reqResponse = donationRequestService.createRequest(RECEIVER_UID, donationId, reqDto, request);
+        DonationRequestResponse reqResponse = donationRequestService.createRequest(receiverUid, donationId, reqDto, request);
         UUID requestId = reqResponse.id();
         assertThat(reqResponse.status()).isEqualTo(DonationRequestStatus.PENDING);
 
         // 3. Donor Approves Request -> Automatically Creates Pickup with PICKUP_PENDING
-        donorRequestService.approveRequest(DONOR_UID, requestId, request);
+        donorRequestService.approveRequest(donorUid, requestId, request);
 
         // Verify pickup was auto-created and initialized
         Pickup pickup = pickupRepository.findByDonationRequestId(requestId).orElse(null);
@@ -138,29 +149,30 @@ public class OperationalPickupWorkflowE2ETest {
 
         // 4. Receiver Starts Pickup Journey -> Transitions to EN_ROUTE_TO_PICKUP
         LocationUpdateDto startLocation = new LocationUpdateDto(12.9750, 77.6000, 15.0, 90.0);
-        PickupResponse journeyResponse = pickupService.startPickupJourney(RECEIVER_UID, pickupId, startLocation, request);
+        PickupResponse journeyResponse = pickupService.startPickupJourney(receiverUid, pickupId, startLocation, request);
         assertThat(journeyResponse.status()).isEqualTo(PickupStatus.EN_ROUTE_TO_PICKUP);
         assertThat(journeyResponse.trackingActive()).isTrue();
 
         // 5. Receiver Streams GPS Coordinates -> Records breadcrumb and calculates distance
         LocationUpdateDto breadcrumb = new LocationUpdateDto(12.9720, 77.5950, 10.0, 45.0);
-        Map<String, Object> streamResult = pickupService.recordLocationUpdate(RECEIVER_UID, pickupId, breadcrumb, request);
+        Map<String, Object> streamResult = pickupService.recordLocationUpdate(receiverUid, pickupId, breadcrumb, request);
         assertThat(streamResult.get("status")).isEqualTo(PickupStatus.EN_ROUTE_TO_PICKUP);
         assertThat((Double) streamResult.get("distanceMeters")).isLessThan(200.0);
         assertThat(streamResult.get("withinGeofence")).isEqualTo(true);
 
         // 6. Receiver Confirms Reached Location -> Transitions to AT_PICKUP
         LocationUpdateDto arrivalLocation = new LocationUpdateDto(12.9716, 77.5946, 0.0, 0.0);
-        PickupResponse reachedResponse = pickupService.confirmReachedLocation(RECEIVER_UID, pickupId, arrivalLocation, request);
+        PickupResponse reachedResponse = pickupService.confirmReachedLocation(receiverUid, pickupId, arrivalLocation, request);
         assertThat(reachedResponse.status()).isEqualTo(PickupStatus.AT_PICKUP);
+        assertThat(reachedResponse.trackingActive()).isFalse();
 
         // 7. Food Safety Inspection -> Accept
         FoodInspectionDto acceptInspection = new FoodInspectionDto(true, "Food inspected. Clean packaging and fresh aroma.", null, null);
-        PickupResponse inspectedResponse = pickupService.inspectFood(RECEIVER_UID, pickupId, acceptInspection, request);
+        PickupResponse inspectedResponse = pickupService.inspectFood(receiverUid, pickupId, acceptInspection, request);
         assertThat(inspectedResponse.status()).isEqualTo(PickupStatus.AT_PICKUP);
 
         // 8. Donor Views Handover OTP
-        DonorPickupOtpResponse donorOtpResponse = pickupService.getOtpForDonor(DONOR_UID, pickupId, request);
+        DonorPickupOtpResponse donorOtpResponse = pickupService.getOtpForDonor(donorUid, pickupId, request);
         assertThat(donorOtpResponse.otp()).isNotBlank();
         assertThat(donorOtpResponse.otp()).hasSize(6);
 
@@ -171,15 +183,15 @@ public class OperationalPickupWorkflowE2ETest {
                 77.5946,
                 "/api/v1/evidence/test_pickup_photo.jpg"
         );
-        PickupResponse pickedUpResponse = pickupService.verifyAndPickup(RECEIVER_UID, pickupId, verifyDto, request);
+        PickupResponse pickedUpResponse = pickupService.verifyAndPickup(receiverUid, pickupId, verifyDto, request);
         assertThat(pickedUpResponse.status()).isEqualTo(PickupStatus.PICKED_UP);
         assertThat(pickedUpResponse.pickupPhotoUrl()).isEqualTo("/api/v1/evidence/test_pickup_photo.jpg");
 
         // 10. Receiver Starts Delivery Transit -> Transitions to IN_TRANSIT
         LocationUpdateDto deliveryStartLocation = new LocationUpdateDto(12.9720, 77.5960, 20.0, 180.0);
-        PickupResponse inTransitResponse = pickupService.startDelivery(RECEIVER_UID, pickupId, deliveryStartLocation, request);
+        PickupResponse inTransitResponse = pickupService.startDelivery(receiverUid, pickupId, deliveryStartLocation, request);
         assertThat(inTransitResponse.status()).isEqualTo(PickupStatus.IN_TRANSIT);
-        assertThat(inTransitResponse.trackingActive()).isTrue();
+        assertThat(inTransitResponse.trackingActive()).isFalse();
 
         // 11. Receiver Completes Delivery -> Transitions to COMPLETED
         CompleteDeliveryDto completeDto = new CompleteDeliveryDto(
@@ -189,7 +201,7 @@ public class OperationalPickupWorkflowE2ETest {
                 null,
                 "/api/v1/evidence/test_delivery_photo.jpg"
         );
-        PickupResponse completedResponse = pickupService.completeDelivery(RECEIVER_UID, pickupId, completeDto, request);
+        PickupResponse completedResponse = pickupService.completeDelivery(receiverUid, pickupId, completeDto, request);
         assertThat(completedResponse.status()).isEqualTo(PickupStatus.COMPLETED);
         assertThat(completedResponse.trackingActive()).isFalse();
         assertThat(completedResponse.deliveredQuantity()).isEqualTo(20.0);
@@ -204,22 +216,22 @@ public class OperationalPickupWorkflowE2ETest {
 
         // 12. Reciprocal Ratings
         // Donor rates Receiver
-        ratingService.submitRating(DONOR_UID, new CreateRatingRequest(
+        ratingService.submitRating(donorUid, new CreateRatingRequest(
                 pickupId,
                 5,
                 "Receiver arrived promptly with proper thermal containers. Excellent coordination!"
         ), request);
 
         // Receiver rates Donor
-        ratingService.submitRating(RECEIVER_UID, new CreateRatingRequest(
+        ratingService.submitRating(receiverUid, new CreateRatingRequest(
                 pickupId,
                 5,
                 "Food was warm, freshly prepared, and properly packaged. Beneficiaries loved it!"
         ), request);
 
         // Verify both ratings are stored
-        UUID donorUserId = userRepository.findByFirebaseUid(DONOR_UID).orElseThrow().getId();
-        UUID receiverUserId = userRepository.findByFirebaseUid(RECEIVER_UID).orElseThrow().getId();
+        UUID donorUserId = userRepository.findByFirebaseUid(donorUid).orElseThrow().getId();
+        UUID receiverUserId = userRepository.findByFirebaseUid(receiverUid).orElseThrow().getId();
         assertThat(ratingRepository.existsByPickupIdAndRaterUserId(pickupId, donorUserId)).isTrue();
         assertThat(ratingRepository.existsByPickupIdAndRaterUserId(pickupId, receiverUserId)).isTrue();
     }

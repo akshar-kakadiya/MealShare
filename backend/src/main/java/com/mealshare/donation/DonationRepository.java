@@ -25,6 +25,12 @@ public interface DonationRepository extends JpaRepository<Donation, UUID> {
     @Query("SELECT d FROM Donation d WHERE d.id = :id")
     Optional<Donation> findByIdWithLock(@Param("id") UUID id);
 
+    @Query("SELECT d FROM Donation d WHERE d.status IN :candidateStatuses AND (d.pickupAvailableUntil < :now OR d.consumeBefore < :now)")
+    java.util.List<Donation> findOverdueCandidateDonations(
+            @Param("candidateStatuses") java.util.Collection<DonationStatus> candidateStatuses,
+            @Param("now") Instant now
+    );
+
     @Query(value = """
         SELECT d.id AS id,
                d.title AS title,
@@ -47,6 +53,7 @@ public interface DonationRepository extends JpaRepository<Donation, UUID> {
         FROM donations d
         WHERE d.status = 'AVAILABLE'
           AND d.consume_before > :now
+          AND d.pickup_available_until > :now
           AND ST_DWithin(d.location::geography, ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography, :radiusMeters)
           AND (:foodCategory IS NULL OR d.food_category = :foodCategory)
         ORDER BY distanceKm ASC, d.consume_before ASC
@@ -56,6 +63,7 @@ public interface DonationRepository extends JpaRepository<Donation, UUID> {
         FROM donations d
         WHERE d.status = 'AVAILABLE'
           AND d.consume_before > :now
+          AND d.pickup_available_until > :now
           AND ST_DWithin(d.location::geography, ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography, :radiusMeters)
           AND (:foodCategory IS NULL OR d.food_category = :foodCategory)
         """,

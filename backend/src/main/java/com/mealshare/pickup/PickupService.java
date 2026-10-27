@@ -30,6 +30,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.mealshare.notification.NotificationService;
 import com.mealshare.notification.NotificationType;
 import com.mealshare.pickup.dto.*;
+import com.mealshare.pickup.tracking.PickupTrackingSessionService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -45,6 +46,10 @@ import java.util.UUID;
 @Service
 @Transactional(readOnly = true)
 public class PickupService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PickupService.class);
+
+
+
 
     private final PickupRepository pickupRepository;
     private final DonationRequestRepository donationRequestRepository;
@@ -61,6 +66,20 @@ public class PickupService {
 
     @Autowired(required = false)
     private PickupLocationUpdateRepository pickupLocationUpdateRepository;
+
+    @Autowired(required = false)
+    private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
+
+    public void setMessagingTemplate(org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate) {
+        this.messagingTemplate = messagingTemplate;
+    }
+
+    @Autowired(required = false)
+    private PickupTrackingSessionService trackingSessionService;
+
+    public void setTrackingSessionService(PickupTrackingSessionService trackingSessionService) {
+        this.trackingSessionService = trackingSessionService;
+    }
 
     public PickupService(PickupRepository pickupRepository,
                          DonationRequestRepository donationRequestRepository,
@@ -271,7 +290,7 @@ public class PickupService {
             throw new AccessDeniedException("You do not have permission to verify OTP for this pickup.");
         }
 
-        if (pickup.getStatus() != PickupStatus.ASSIGNED) {
+        if (pickup.getStatus() != PickupStatus.ASSIGNED && pickup.getStatus() != PickupStatus.AT_PICKUP) {
             throw new IllegalStateException("Pickup is not in ASSIGNED state. Current status: " + pickup.getStatus());
         }
 
@@ -286,7 +305,8 @@ public class PickupService {
         boolean matches = pickupOtpService.verifyOtp(rawOtp, pickup.getOtpHash());
         if (!matches) {
             pickup.setOtpAttempts(pickup.getOtpAttempts() + 1);
-            pickupRepository.save(pickup);
+            pickup = pickupRepository.save(pickup);
+        broadcastTrackingUpdate(pickup);
 
             auditService.logEvent(
                     user.getId().toString(),
@@ -606,6 +626,16 @@ public class PickupService {
             throw new IllegalStateException("Pickup cannot start journey in status: " + pickup.getStatus());
         }
 
+        Donation donation = pickup.getDonationRequest() != null ? pickup.getDonationRequest().getDonation() : null;
+        if (donation != null) {
+            Instant now = Instant.now();
+            if (donation.getStatus() == DonationStatus.EXPIRED ||
+                (donation.getPickupAvailableUntil() != null && donation.getPickupAvailableUntil().isBefore(now)) ||
+                (donation.getConsumeBefore() != null && donation.getConsumeBefore().isBefore(now))) {
+                throw new IllegalStateException("Cannot start pickup journey for an expired donation.");
+            }
+        }
+
         pickup.setStatus(PickupStatus.EN_ROUTE_TO_PICKUP);
         pickup.setStartedPickupAt(Instant.now());
         pickup.setTrackingActive(true);
@@ -622,8 +652,18 @@ public class PickupService {
         }
 
         pickup = pickupRepository.save(pickup);
+        if (trackingSessionService != null) {
+            try {
+                trackingSessionService.activateSession(pickup);
+            } catch (Exception e) {
+                log.warn("Failed to activate live tracking session in RTDB: {}", e.getMessage());
+            }
+        }
+        broadcastTrackingUpdate(pickup);
 
-        Donation donation = pickup.getDonationRequest().getDonation();
+        if (donation == null && pickup.getDonationRequest() != null) {
+            donation = pickup.getDonationRequest().getDonation();
+        }
         if (notificationService != null && donation != null && donation.getDonor() != null && donation.getDonor().getUser() != null) {
             notificationService.createNotification(
                     donation.getDonor().getUser().getId(),
@@ -654,6 +694,10 @@ public class PickupService {
             throw new IllegalStateException("Location tracking is not active for this pickup.");
         }
 
+        if (pickup.getStatus() != PickupStatus.EN_ROUTE_TO_PICKUP) {
+            throw new IllegalStateException("Location updates are only accepted during an active transit journey (en route to pickup). Current status: " + pickup.getStatus());
+        }
+
         pickup.setCurrentLatitude(location.latitude());
         pickup.setCurrentLongitude(location.longitude());
         pickup.setLocationUpdatedAt(Instant.now());
@@ -664,7 +708,8 @@ public class PickupService {
                     pickup, location.latitude(), location.longitude(), location.speed(), location.heading(), phase
             ));
         }
-        pickupRepository.save(pickup);
+        pickup = pickupRepository.save(pickup);
+        broadcastTrackingUpdate(pickup);
 
         double distanceMeters = 0.0;
         Donation donation = pickup.getDonationRequest().getDonation();
@@ -708,6 +753,7 @@ public class PickupService {
 
         pickup.setStatus(PickupStatus.AT_PICKUP);
         pickup.setArrivedAtPickupAt(Instant.now());
+        pickup.setTrackingActive(false); // Pre-pickup tracking session stops on arrival
         if (location != null && location.latitude() != null && location.longitude() != null) {
             pickup.setCurrentLatitude(location.latitude());
             pickup.setCurrentLongitude(location.longitude());
@@ -715,8 +761,16 @@ public class PickupService {
         }
 
         pickup = pickupRepository.save(pickup);
+        if (trackingSessionService != null) {
+            try {
+                trackingSessionService.deactivateSession(pickup.getId(), PickupStatus.AT_PICKUP);
+            } catch (Exception e) {
+                log.warn("Failed to deactivate live tracking session in RTDB: {}", e.getMessage());
+            }
+        }
+        broadcastTrackingUpdate(pickup);
 
-        Donation donation = pickup.getDonationRequest().getDonation();
+        Donation donation = pickup.getDonationRequest() != null ? pickup.getDonationRequest().getDonation() : null;
         if (notificationService != null && donation != null && donation.getDonor() != null && donation.getDonor().getUser() != null) {
             notificationService.createNotification(
                     donation.getDonor().getUser().getId(),
@@ -764,6 +818,13 @@ public class PickupService {
             pickup.setInspectionRejected(true);
             pickup.setInspectionNotes(dto.effectiveRejectionReason() != null ? dto.effectiveRejectionReason() : "Declined during on-site inspection");
             pickup.setStatus(PickupStatus.CANCELLED);
+            if (trackingSessionService != null) {
+                try {
+                    trackingSessionService.deactivateSession(pickupId, PickupStatus.CANCELLED);
+                } catch (Exception e) {
+                    log.warn("Failed to deactivate live tracking session in RTDB on rejected inspection: {}", e.getMessage());
+                }
+            }
             pickup.setTrackingActive(false);
             pickupOtpService.invalidateOtp(pickupId);
 
@@ -828,7 +889,8 @@ public class PickupService {
         boolean matches = pickupOtpService.verifyOtp(dto.otp(), pickup.getOtpHash());
         if (!matches) {
             pickup.setOtpAttempts(pickup.getOtpAttempts() + 1);
-            pickupRepository.save(pickup);
+            pickup = pickupRepository.save(pickup);
+        broadcastTrackingUpdate(pickup);
             auditService.logEvent(user.getId().toString(), "RECEIVER", "OTP_VERIFICATION_FAILED", "Pickup", pickup.getId().toString(), "{\"attempts\":" + pickup.getOtpAttempts() + "}", httpRequest);
             throw new IllegalStateException("Invalid or expired pickup OTP.");
         }
@@ -843,6 +905,7 @@ public class PickupService {
         if (dto.photoUrl() != null && !dto.photoUrl().isBlank()) pickup.setPickupPhotoUrl(dto.photoUrl().trim());
 
         pickup = pickupRepository.save(pickup);
+        broadcastTrackingUpdate(pickup);
 
         Donation donation = pickup.getDonationRequest().getDonation();
         if (donation != null) {
@@ -882,7 +945,7 @@ public class PickupService {
 
         pickup.setStatus(PickupStatus.IN_TRANSIT);
         pickup.setStartedDeliveryAt(Instant.now());
-        pickup.setTrackingActive(true);
+        pickup.setTrackingActive(false); // Live tracking is strictly before pickup only; do not track delivery
 
         if (location != null && location.latitude() != null && location.longitude() != null) {
             pickup.setCurrentLatitude(location.latitude());
@@ -896,8 +959,9 @@ public class PickupService {
         }
 
         pickup = pickupRepository.save(pickup);
+        broadcastTrackingUpdate(pickup);
 
-        Donation donation = pickup.getDonationRequest().getDonation();
+        Donation donation = pickup.getDonationRequest() != null ? pickup.getDonationRequest().getDonation() : null;
         if (notificationService != null && donation != null && donation.getDonor() != null && donation.getDonor().getUser() != null) {
             notificationService.createNotification(
                     donation.getDonor().getUser().getId(),
@@ -997,6 +1061,15 @@ public class PickupService {
             throw new AccessDeniedException("You do not have permission to track this pickup.");
         }
 
+        return buildLiveTrackingDto(pickup);
+    }
+
+    public LiveTrackingDto buildLiveTrackingDto(Pickup pickup) {
+        DonationRequest req = pickup.getDonationRequest();
+        Donation donation = req != null ? req.getDonation() : null;
+        DonorProfile donor = donation != null ? donation.getDonor() : null;
+        ReceiverOrganization receiver = pickup.getReceiver();
+
         double distanceMeters = 0.0;
         String phase = "IDLE";
         if (pickup.getStatus() == PickupStatus.EN_ROUTE_TO_PICKUP) {
@@ -1021,6 +1094,8 @@ public class PickupService {
             }
         } else if (pickup.getStatus() == PickupStatus.COMPLETED) {
             phase = "DELIVERY_COMPLETED";
+        } else if (pickup.getStatus() == PickupStatus.CANCELLED) {
+            phase = "CANCELLED";
         }
 
         boolean withinGeofence = (distanceMeters <= 200.0);
@@ -1045,6 +1120,17 @@ public class PickupService {
                 donor != null ? donor.getEntityName() : null,
                 donation != null ? donation.getTitle() : null
         );
+    }
+
+    public void broadcastTrackingUpdate(Pickup pickup) {
+        if (messagingTemplate != null && pickup != null && pickup.getId() != null) {
+            try {
+                LiveTrackingDto dto = buildLiveTrackingDto(pickup);
+                messagingTemplate.convertAndSend("/topic/pickups/" + pickup.getId() + "/tracking", dto);
+            } catch (Exception e) {
+                // Log and gracefully continue without failing the operational transaction
+            }
+        }
     }
 
     public static double calculateHaversineDistanceMeters(double lat1, double lon1, double lat2, double lon2) {
@@ -1112,4 +1198,68 @@ public class PickupService {
         return receiverOrganizationRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Receiver organization profile not found for user."));
     }
+
+    @Transactional
+    public PickupResponse cancelPickup(String firebaseUid, UUID pickupId, String reason, HttpServletRequest httpRequest) {
+        User user = userRepository.findByFirebaseUid(firebaseUid)
+                .orElseThrow(() -> new AccessDeniedException("User not found for authenticated account."));
+
+        Pickup pickup = pickupRepository.findByIdWithLock(pickupId)
+                .orElseThrow(() -> new ResourceNotFoundException("Pickup not found with id: " + pickupId));
+
+        boolean isReceiver = pickup.getReceiver() != null && pickup.getReceiver().getUser() != null
+                && pickup.getReceiver().getUser().getId().equals(user.getId());
+        boolean isDonor = pickup.getDonationRequest() != null
+                && pickup.getDonationRequest().getDonation() != null
+                && pickup.getDonationRequest().getDonation().getDonor() != null
+                && pickup.getDonationRequest().getDonation().getDonor().getUser() != null
+                && pickup.getDonationRequest().getDonation().getDonor().getUser().getId().equals(user.getId());
+        boolean isAdmin = user.getRole() == UserRole.ADMIN;
+
+        if (!isReceiver && !isDonor && !isAdmin) {
+            throw new AccessDeniedException("You do not have permission to cancel this pickup.");
+        }
+
+        if (pickup.getStatus() == PickupStatus.COMPLETED) {
+            throw new IllegalStateException("Completed pickup cannot be cancelled.");
+        }
+        if (pickup.getStatus() == PickupStatus.CANCELLED) {
+            throw new IllegalStateException("Pickup is already cancelled.");
+        }
+
+        pickup.setStatus(PickupStatus.CANCELLED);
+        pickup.setTrackingActive(false);
+        pickupOtpService.invalidateOtp(pickupId);
+        pickup = pickupRepository.save(pickup);
+
+        if (trackingSessionService != null) {
+            try {
+                trackingSessionService.deactivateSession(pickup.getId(), PickupStatus.CANCELLED);
+            } catch (Exception e) {
+                log.warn("Failed to deactivate live tracking session in RTDB on cancellation: {}", e.getMessage());
+            }
+        }
+
+        DonationRequest request = pickup.getDonationRequest();
+        if (request != null) {
+            request.setStatus(DonationRequestStatus.REJECTED);
+            request.setRequestReason(reason != null && !reason.isBlank() ? "Cancelled: " + reason : "Pickup cancelled");
+            donationRequestRepository.save(request);
+
+            Donation donation = request.getDonation();
+            if (donation != null) {
+                double returnedQty = request.getAllocatedQuantity() != null ? request.getAllocatedQuantity() : 0.0;
+                donation.setAllocatedQuantity(Math.max(0.0, donation.getAllocatedQuantity() - returnedQty));
+                if (donation.getStatus() == DonationStatus.APPROVED || donation.getStatus() == DonationStatus.PICKUP_ASSIGNED) {
+                    donation.setStatus(DonationStatus.AVAILABLE);
+                }
+                donationRepository.save(donation);
+            }
+        }
+
+        broadcastTrackingUpdate(pickup);
+        auditService.logEvent(user.getId().toString(), user.getRole().name(), "PICKUP_CANCELLED", "Pickup", pickup.getId().toString(), "{\"reason\":\"" + reason + "\"}", httpRequest);
+        return PickupResponse.fromEntity(pickup);
+    }
+
 }

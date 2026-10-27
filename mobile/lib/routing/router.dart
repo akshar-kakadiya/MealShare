@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/app_colors.dart';
+import '../auth/screens/auth_startup_screen.dart';
 import '../auth/screens/login_screen.dart';
 import '../auth/screens/register_screen.dart';
 import '../donor/donor_pickups_screen.dart';
@@ -19,13 +20,19 @@ import '../receiver/my_requests_screen.dart';
 import '../receiver/pickup_tracking_screen.dart';
 import '../receiver/notifications_screen.dart';
 import '../receiver/profile_screen.dart';
+import '../location/location_picker.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final router = GoRouter(
   navigatorKey: _rootNavigatorKey,
-  initialLocation: '/donor/home',
+  initialLocation: '/',
   routes: [
+    GoRoute(
+      path: '/',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (c, s) => const AuthStartupScreen(),
+    ),
     GoRoute(
       path: '/login',
       parentNavigatorKey: _rootNavigatorKey,
@@ -131,6 +138,11 @@ final router = GoRouter(
       path: '/receiver/pickup/:id',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (c, s) => ReceiverPickupTrackingScreen(requestId: s.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/location/picker',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (c, s) => const LocationMapPickerScreen(),
     ),
   ],
 );

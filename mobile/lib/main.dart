@@ -6,6 +6,7 @@ import 'app.dart';
 import 'auth/auth_service.dart';
 import 'shared/api_client.dart';
 import 'mock/app_state.dart';
+import 'tracking/pickup_live_tracking_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,6 +16,7 @@ Future<void> main() async {
   final authService = AuthService();
   final apiClient = ApiClient(authService);
   final appState = AppState(apiClient: apiClient, authService: authService);
+  final trackingService = PickupLiveTrackingService();
 
   runApp(
     MultiProvider(
@@ -22,6 +24,7 @@ Future<void> main() async {
         ChangeNotifierProvider.value(value: authService),
         Provider.value(value: apiClient),
         ChangeNotifierProvider.value(value: appState),
+        ChangeNotifierProvider.value(value: trackingService),
       ],
       child: const MealShareApp(),
     ),

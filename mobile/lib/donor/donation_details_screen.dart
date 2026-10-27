@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../mock/app_state.dart';
+import '../shared/utils/date_formatter.dart';
 import '../mock/models.dart';
 import '../shared/api_client.dart';
 import '../config/api_config.dart';
@@ -10,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../shared/widgets/status_chip.dart';
 import '../shared/widgets/timeline_widget.dart';
 import '../shared/widgets/rating_dialog.dart';
+import 'widgets/receiver_profile_bottom_sheet.dart';
 
 class DonorDonationDetailsScreen extends StatefulWidget {
   final String id;
@@ -396,7 +398,7 @@ class _DonorDonationDetailsScreenState extends State<DonorDonationDetailsScreen>
             title: 'Food Safety',
             icon: Icons.health_and_safety,
             children: [
-              _DetailRow('Consume Before', donation.consumeBefore),
+              _DetailRow('Consume Before', AppDateFormatter.formatConsumeBefore(donation.consumeBeforeTime ?? donation.consumeBefore)),
               _DetailRow('Storage', donation.storageCondition),
               _DetailRow('Packaging', donation.packagingCondition),
               if (donation.hasAllergens)
@@ -411,7 +413,17 @@ class _DonorDonationDetailsScreenState extends State<DonorDonationDetailsScreen>
             icon: Icons.location_on,
             children: [
               if (donation.pickupAddress.isNotEmpty) _DetailRow('Address', donation.pickupAddress),
-              if (donation.pickupWindowStart.isNotEmpty) _DetailRow('Window', '${donation.pickupWindowStart} - ${donation.pickupWindowEnd}'),
+              _DetailRow(
+                'Pickup Date',
+                AppDateFormatter.formatDate(donation.pickupAvailableFrom ?? donation.pickupWindowStart),
+              ),
+              _DetailRow(
+                'Pickup Time',
+                AppDateFormatter.formatPickupTimeRange(
+                  donation.pickupAvailableFrom ?? donation.pickupWindowStart,
+                  donation.pickupAvailableUntil ?? donation.pickupWindowEnd,
+                ),
+              ),
               if (donation.pickupInstructions.isNotEmpty) _DetailRow('Instructions', donation.pickupInstructions),
             ],
           ),
@@ -459,11 +471,18 @@ class _DonorDonationDetailsScreenState extends State<DonorDonationDetailsScreen>
                       const SizedBox(height: AppSpacing.sm),
                       Text('"${r.message}"', style: Theme.of(context).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic)),
                     ],
-                    if (r.status == 'PENDING') ...[
+                    if (r.status == 'PENDING' && donation.status != 'EXPIRED') ...[
                       const SizedBox(height: AppSpacing.md),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.xs,
                         children: [
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.info_outline, size: 16),
+                            label: const Text('View Profile'),
+                            onPressed: () => showReceiverProfileModal(context, r.id, r.receiverName),
+                          ),
                           OutlinedButton.icon(
                             onPressed: () {
                               showDialog(
@@ -613,7 +632,7 @@ class _DonorDonationDetailsScreenState extends State<DonorDonationDetailsScreen>
                               children: [
                                 Text(receiverName, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
                                 if (scheduledAt.isNotEmpty)
-                                  Text('Scheduled: $scheduledAt', style: Theme.of(context).textTheme.bodySmall),
+                                  Text('Scheduled: ${AppDateFormatter.formatDateTime(scheduledAt)}', style: Theme.of(context).textTheme.bodySmall),
                               ],
                             ),
                           ),

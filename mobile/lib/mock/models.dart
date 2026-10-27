@@ -59,6 +59,21 @@ class UserProfile {
     this.latitude,
     this.longitude,
   }) : joinedAt = joinedAt ?? DateTime.now();
+
+  factory UserProfile.empty() => UserProfile(
+    id: '',
+    name: '',
+    role: '',
+    email: '',
+    phone: '',
+    address: '',
+    organizationType: '',
+    category: '',
+    isVerified: false,
+    profileStatus: 'INCOMPLETE',
+    verificationStatus: 'PENDING',
+    joinedAt: DateTime(2026, 1, 1),
+  );
 }
 
 class Donation {
@@ -81,6 +96,8 @@ class Donation {
   final String pickupAddress;
   final String pickupWindowStart;
   final String pickupWindowEnd;
+  final DateTime? pickupAvailableFrom;
+  final DateTime? pickupAvailableUntil;
   final String pickupInstructions;
   final String status;
   final DateTime createdAt;
@@ -107,6 +124,8 @@ class Donation {
     this.pickupAddress = '',
     this.pickupWindowStart = '',
     this.pickupWindowEnd = '',
+    this.pickupAvailableFrom,
+    this.pickupAvailableUntil,
     this.pickupInstructions = '',
     required this.status,
     required this.createdAt,

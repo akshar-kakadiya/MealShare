@@ -295,8 +295,8 @@ public class DonationService {
             throw new IllegalArgumentException("Consume-before time must be after pickup start time.");
         }
 
-        if (pickupUntil.isAfter(consume)) {
-            throw new IllegalArgumentException("Pickup window cannot extend beyond food consume-before deadline.");
+        if (!consume.isAfter(pickupUntil)) {
+            throw new IllegalArgumentException("Food consumable-until deadline must be later than pickup window end time.");
         }
 
         if (consume.isBefore(Instant.now())) {

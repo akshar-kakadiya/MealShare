@@ -42,6 +42,8 @@ public class DonorProfileService {
             profile.setPolicyAccepted(true);
             profile.setRatingAverage(5.0);
             profile.setCompletedDonationsCount(0);
+            profile.setProfileStatus(com.mealshare.user.ProfileStatus.INCOMPLETE);
+            profile.setVerificationStatus(com.mealshare.user.VerificationStatus.PENDING);
             return donorProfileRepository.save(profile);
         });
     }
@@ -94,6 +96,9 @@ public class DonorProfileService {
         if (isComplete) {
             profile.setProfileStatus(com.mealshare.user.ProfileStatus.COMPLETE);
             user.setProfileStatus(com.mealshare.user.ProfileStatus.COMPLETE);
+        } else {
+            profile.setProfileStatus(com.mealshare.user.ProfileStatus.INCOMPLETE);
+            user.setProfileStatus(com.mealshare.user.ProfileStatus.INCOMPLETE);
         }
 
         // Resubmit verification if previously ACTION_REQUIRED or REJECTED

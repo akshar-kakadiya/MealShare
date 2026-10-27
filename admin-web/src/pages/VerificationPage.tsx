@@ -255,9 +255,17 @@ export default function VerificationPage() {
           {row.status !== 'APPROVED' && (
             <button
               onClick={() => handleUpdateStatus(row.id, 'APPROVED')}
-              disabled={actionLoading}
-              className="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition"
-              title="Approve"
+              disabled={actionLoading || row.profileStatus !== 'COMPLETE'}
+              className={`p-1.5 rounded-lg transition ${
+                row.profileStatus !== 'COMPLETE'
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : 'hover:bg-emerald-50 text-emerald-600'
+              }`}
+              title={
+                row.profileStatus !== 'COMPLETE'
+                  ? 'Profile must be completed before approval'
+                  : 'Approve'
+              }
             >
               <CheckCircle className="w-4 h-4" />
             </button>
@@ -685,30 +693,45 @@ export default function VerificationPage() {
 
               {/* Main Adjudication Buttons */}
               {!dialogAction && (
-                <div className="pt-2 flex flex-col sm:flex-row gap-2">
-                  <button
-                    onClick={() => handleUpdateStatus(selected.id, 'APPROVED', 'Verified by administrator')}
-                    disabled={actionLoading || selected.status === 'APPROVED'}
-                    className="flex-1 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2 transition"
-                  >
-                    <CheckCircle className="w-4 h-4" /> Approve Profile
-                  </button>
+                <div className="pt-2 space-y-2">
+                  {selected.profileStatus !== 'COMPLETE' && (
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs flex items-center gap-2">
+                      <HelpCircle className="w-4 h-4 flex-shrink-0 text-amber-600" />
+                      <span>
+                        Profile is incomplete. Mandatory organization and operating details must be provided before approval.
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      onClick={() => handleUpdateStatus(selected.id, 'APPROVED', 'Verified by administrator')}
+                      disabled={actionLoading || selected.status === 'APPROVED' || selected.profileStatus !== 'COMPLETE'}
+                      className="flex-1 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition"
+                      title={
+                        selected.profileStatus !== 'COMPLETE'
+                          ? 'Profile must be completed before approval'
+                          : 'Approve Profile'
+                      }
+                    >
+                      <CheckCircle className="w-4 h-4" /> Approve Profile
+                    </button>
 
-                  <button
-                    onClick={() => openActionDialog('ACTION_REQUIRED')}
-                    disabled={actionLoading || selected.status === 'ACTION_REQUIRED'}
-                    className="flex-1 py-2.5 bg-white border border-amber-300 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-50 disabled:opacity-50 flex items-center justify-center gap-2 transition"
-                  >
-                    <HelpCircle className="w-4 h-4" /> Request Info
-                  </button>
+                    <button
+                      onClick={() => openActionDialog('ACTION_REQUIRED')}
+                      disabled={actionLoading || selected.status === 'ACTION_REQUIRED'}
+                      className="flex-1 py-2.5 bg-white border border-amber-300 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-50 disabled:opacity-50 flex items-center justify-center gap-2 transition"
+                    >
+                      <HelpCircle className="w-4 h-4" /> Request Info
+                    </button>
 
-                  <button
-                    onClick={() => openActionDialog('REJECTED')}
-                    disabled={actionLoading || selected.status === 'REJECTED'}
-                    className="flex-1 py-2.5 bg-white border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 disabled:opacity-50 flex items-center justify-center gap-2 transition"
-                  >
-                    <XCircle className="w-4 h-4" /> Reject
-                  </button>
+                    <button
+                      onClick={() => openActionDialog('REJECTED')}
+                      disabled={actionLoading || selected.status === 'REJECTED'}
+                      className="flex-1 py-2.5 bg-white border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 disabled:opacity-50 flex items-center justify-center gap-2 transition"
+                    >
+                      <XCircle className="w-4 h-4" /> Reject
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

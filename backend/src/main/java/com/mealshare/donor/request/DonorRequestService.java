@@ -9,7 +9,9 @@ import com.mealshare.donor.DonorProfile;
 import com.mealshare.donor.DonorProfileService;
 import com.mealshare.donor.request.dto.ApproveDonationRequestResponse;
 import com.mealshare.donor.request.dto.DonorDonationRequestResponse;
+import com.mealshare.donor.request.dto.ReceiverProfilePreviewDto;
 import com.mealshare.donor.request.dto.RejectDonationRequestDto;
+import com.mealshare.receiver.ReceiverOrganization;
 import com.mealshare.receiver.request.DonationRequest;
 import com.mealshare.receiver.request.DonationRequestRepository;
 import com.mealshare.receiver.request.DonationRequestStatus;
@@ -84,6 +86,34 @@ public class DonorRequestService {
                 .map(DonorDonationRequestResponse::fromEntity);
     }
 
+    public ReceiverProfilePreviewDto getReceiverProfilePreview(String firebaseUid, UUID requestId) {
+        User user = userRepository.findByFirebaseUid(firebaseUid)
+                .orElseThrow(() -> new AccessDeniedException("User account not found."));
+
+        if (user.getStatus() == UserStatus.SUSPENDED) {
+            throw new AccessDeniedException("Account is suspended.");
+        }
+
+        DonationRequest request = donationRequestRepository.findById(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Donation request not found with id: " + requestId));
+
+        if (user.getRole() == UserRole.DONOR) {
+            DonorProfile donorProfile = getDonorProfileOrThrow(user);
+            if (!request.getDonation().getDonor().getId().equals(donorProfile.getId())) {
+                throw new AccessDeniedException("You do not have permission to view this receiver profile.");
+            }
+        } else if (user.getRole() != UserRole.ADMIN) {
+            throw new AccessDeniedException("User does not possess permissions to view receiver profile.");
+        }
+
+        ReceiverOrganization receiver = request.getReceiverOrganization();
+        if (receiver == null) {
+            throw new ResourceNotFoundException("Receiver organization not found for request: " + requestId);
+        }
+
+        return ReceiverProfilePreviewDto.fromEntity(receiver);
+    }
+
     @Transactional
     public ApproveDonationRequestResponse approveRequest(String firebaseUid,
                                                          UUID requestId,
@@ -122,8 +152,10 @@ public class DonorRequestService {
         if (donation.getStatus() != DonationStatus.AVAILABLE) {
             throw new IllegalStateException("Donation is not available for allocation. Current status: " + donation.getStatus());
         }
-        if (donation.getConsumeBefore() != null && donation.getConsumeBefore().isBefore(Instant.now())) {
-            throw new IllegalStateException("Donation has passed its consume-before deadline.");
+        Instant now = Instant.now();
+        if ((donation.getPickupAvailableUntil() != null && donation.getPickupAvailableUntil().isBefore(now)) ||
+            (donation.getConsumeBefore() != null && donation.getConsumeBefore().isBefore(now))) {
+            throw new IllegalStateException("Donation has passed its availability deadline.");
         }
 
         double remainingQuantity = donation.getRemainingQuantity();

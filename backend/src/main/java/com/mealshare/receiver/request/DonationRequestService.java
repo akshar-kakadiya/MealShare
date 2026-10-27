@@ -76,13 +76,20 @@ public class DonationRequestService {
         }
 
         // Validate donation status
+        if (donation.getStatus() == DonationStatus.EXPIRED) {
+            throw new IllegalStateException("Donation has expired and is no longer available.");
+        }
         if (donation.getStatus() != DonationStatus.AVAILABLE) {
             throw new IllegalStateException("Donation is no longer available for requests.");
         }
 
-        // Validate expiration
-        if (donation.getConsumeBefore().isBefore(Instant.now())) {
+        // Validate expiration deadline
+        Instant now = Instant.now();
+        if (donation.getConsumeBefore() != null && donation.getConsumeBefore().isBefore(now)) {
             throw new IllegalStateException("Donation has passed its consume-before expiration time.");
+        }
+        if (donation.getPickupAvailableUntil() != null && donation.getPickupAvailableUntil().isBefore(now)) {
+            throw new IllegalStateException("Donation has passed its pickup availability deadline.");
         }
 
         // Validate requested quantity
